@@ -1,0 +1,273 @@
+type WithdrawStatus = 
+ variant {
+   approved;
+   pending;
+   rejected;
+ };
+type WithdrawRequestPublic = 
+ record {
+   amount: nat;
+   id: nat;
+   processedAt: opt Timestamp;
+   requestedAt: Timestamp;
+   status: WithdrawStatus;
+   user: UserId;
+ };
+type WalletInfo = 
+ record {
+   balance: nat;
+   directIncome: nat;
+   levelIncome: nat;
+   pairIncome: nat;
+   totalIncome: nat;
+ };
+type UserStatus = 
+ variant {
+   active;
+   hold;
+   inactive;
+ };
+type UserPublic = 
+ record {
+   createdAt: Timestamp;
+   directIncome: nat;
+   hasBankDetails: bool;
+   hasUpiId: bool;
+   id: UserId;
+   isAdmin: bool;
+   leftChild: opt UserId;
+   levelIncome: nat;
+   mobileNumber: text;
+   name: text;
+   pairIncome: nat;
+   referralCode: text;
+   rightChild: opt UserId;
+   sponsorId: opt UserId;
+   status: UserStatus;
+   totalIncome: nat;
+   walletBalance: nat;
+ };
+type UserId = principal;
+type TreeNode = 
+ record {
+   children: vec TreeNode;
+   name: text;
+   user: UserId;
+ };
+type Timestamp = int;
+type ProductPublic = 
+ record {
+   id: nat;
+   imageUrl: opt text;
+   isActive: bool;
+   name: text;
+   price: nat;
+ };
+type Plan = 
+ record {
+   id: nat;
+   name: text;
+   price: nat;
+ };
+type PaymentDetails = 
+ record {
+   bankDetails: opt BankDetails;
+   upiId: opt text;
+ };
+type OrderStatus = 
+ variant {
+   approved;
+   pendingApproval;
+   rejected;
+ };
+type OrderPublic = 
+ record {
+   buyer: UserId;
+   deliveryAddress: text;
+   id: nat;
+   planId: nat;
+   planPrice: nat;
+   rejectionReason: opt text;
+   status: OrderStatus;
+   timestamp: Timestamp;
+   utrScreenshotUrl: opt text;
+ };
+type NotificationPublic = 
+ record {
+   id: nat;
+   isRead: bool;
+   message: text;
+   recipientId: opt UserId;
+   timestamp: Timestamp;
+ };
+type BankDetails = 
+ record {
+   accountHolderName: text;
+   accountNumber: text;
+   ifsc: text;
+ };
+type AuditLog = 
+ record {
+   action: text;
+   details: text;
+   id: nat;
+   targetUserId: opt UserId;
+   timestamp: Timestamp;
+ };
+type AdminStats = 
+ record {
+   netProfit: nat;
+   pendingOrders: nat;
+   pendingWithdrawals: nat;
+   totalCommissionsPaid: nat;
+   totalOrders: nat;
+   totalRevenue: nat;
+   totalUsers: nat;
+ };
+service : {
+  adminAddProduct: (name: text, price: nat, imageUrl: opt text) ->
+   (variant {
+      err: text;
+      ok: ProductPublic;
+    });
+  adminApproveOrder: (orderId: nat) -> (variant {
+                                          err: text;
+                                          ok;
+                                        });
+  adminApproveWithdrawal: (requestId: nat) -> (variant {
+                                                 err: text;
+                                                 ok;
+                                               });
+  adminDeleteProduct: (id: nat) -> (variant {
+                                      err: text;
+                                      ok;
+                                    });
+  adminGetAllOrders: () -> (variant {
+                              err: text;
+                              ok: vec OrderPublic;
+                            }) query;
+  adminGetAllUsers: () -> (variant {
+                             err: text;
+                             ok: vec UserPublic;
+                           }) query;
+  adminGetAllWithdrawals: () ->
+   (variant {
+      err: text;
+      ok: vec WithdrawRequestPublic;
+    }) query;
+  adminGetAuditLog: () -> (variant {
+                             err: text;
+                             ok: vec AuditLog;
+                           }) query;
+  adminGetNotificationHistory: () ->
+   (variant {
+      err: text;
+      ok: vec NotificationPublic;
+    }) query;
+  adminGetPendingOrders: () ->
+   (variant {
+      err: text;
+      ok: vec OrderPublic;
+    }) query;
+  adminGetProducts: () -> (variant {
+                             err: text;
+                             ok: vec ProductPublic;
+                           }) query;
+  adminGetStats: () -> (variant {
+                          err: text;
+                          ok: AdminStats;
+                        }) query;
+  adminLogin: (adminId: text, password: text) -> (variant {
+                                                    err: text;
+                                                    ok;
+                                                  });
+  adminRejectOrder: (orderId: nat, reason: text) -> (variant {
+                                                       err: text;
+                                                       ok;
+                                                     });
+  adminRejectWithdrawal: (requestId: nat) -> (variant {
+                                                err: text;
+                                                ok;
+                                              });
+  adminSendNotification: (recipientId: opt UserId, message: text) ->
+   (variant {
+      err: text;
+      ok;
+    });
+  adminUpdateProduct: (id: nat, name: text, price: nat, imageUrl:
+   opt text) -> (variant {
+                   err: text;
+                   ok;
+                 });
+  getDirectDownline: () -> (vec UserPublic) query;
+  getDownlineTree: () -> (variant {
+                            err: text;
+                            ok: TreeNode;
+                          }) query;
+  getMyNotifications: () -> (vec NotificationPublic) query;
+  getMyOrders: () -> (vec OrderPublic) query;
+  getMyPaymentDetails: () -> (variant {
+                                err: text;
+                                ok: PaymentDetails;
+                              }) query;
+  getMyProfile: () -> (variant {
+                         err: text;
+                         ok: UserPublic;
+                       }) query;
+  getMyReferralCode: () -> (text) query;
+  getMyWallet: () -> (variant {
+                        err: text;
+                        ok: WalletInfo;
+                      }) query;
+  getMyWithdrawals: () -> (vec WithdrawRequestPublic) query;
+  getPlans: () -> (vec Plan) query;
+  getProducts: () -> (vec ProductPublic) query;
+  getUserByMobile: (mobileNumber: text) -> (opt UserPublic) query;
+  /// Make the caller an admin if no admin exists yet.
+  initAdmin: () -> (variant {
+                      err: text;
+                      ok;
+                    });
+  loginUser: (mobileNumber: text, password: text) ->
+   (variant {
+      err: text;
+      ok: record {
+            profile: UserPublic;
+            userId: UserId;
+          };
+    });
+  markNotificationRead: (notificationId: nat) -> (variant {
+                                                    err: text;
+                                                    ok;
+                                                  });
+  purchasePlan: (productId: nat, deliveryAddress: text, utrScreenshotUrl:
+   opt text) -> (variant {
+                   err: text;
+                   ok: OrderPublic;
+                 });
+  registerUser: (name: text, mobileNumber: text, password: text, sponsorCode:
+   opt text) -> (variant {
+                   err: text;
+                   ok: UserPublic;
+                 });
+  requestWithdrawal: (amount: nat) ->
+   (variant {
+      err: text;
+      ok: WithdrawRequestPublic;
+    });
+  resetUserPassword: (userId: UserId, newPassword: text) ->
+   (variant {
+      err: text;
+      ok;
+    });
+  savePaymentDetails: (bankDetails: opt BankDetails, upiId: opt text) ->
+   (variant {
+      err: text;
+      ok;
+    });
+  setUserStatus: (userId: UserId, status: UserStatus) ->
+   (variant {
+      err: text;
+      ok;
+    });
+}

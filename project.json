@@ -1,0 +1,26 @@
+{
+  "overview": "GUCCORA is a premium product-based MLM e-commerce platform. Users register with mobile+password, browse and buy real products (₹599–₹2999), upload UTR payment screenshots for admin approval, and earn fixed commissions from product referrals across 10 levels. The admin has a separate secure login to manage products, users, orders, withdrawals, and send notifications.",
+  "features": [
+    "Mobile number + password login with persistent session",
+    "Separate admin login at /admin-login",
+    "Product management: admin adds/edits/deletes products with images",
+    "User control: admin can activate, deactivate, or put users on hold",
+    "UPI payment flow with UTR screenshot upload and admin order approval",
+    "Mandatory delivery address capture at checkout",
+    "Commission payouts: ₹40 direct, ₹5×10 levels, ₹3 pair (₹93 cap per order)",
+    "Admin notification system to all or individual users",
+    "Withdrawal system with bank/UPI details requirement and admin approval",
+    "Premium black and gold UI, fully mobile responsive"
+  ],
+  "category": "ecommerce",
+  "tags": [
+    "mlm",
+    "ecommerce",
+    "affiliate",
+    "upi-payments",
+    "mobile-auth",
+    "admin-panel",
+    "india"
+  ],
+  "last_updated": "2026-04-08T04:17:09.700Z"
+}
