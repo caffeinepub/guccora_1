@@ -1,8 +1,8 @@
 import Map "mo:core/Map";
 import List "mo:core/List";
+import Set "mo:core/Set";
 import Time "mo:core/Time";
-import Principal "mo:core/Principal";
-import Nat8 "mo:core/Nat8";
+import Text "mo:core/Text";
 import Types "../types/users";
 
 module {
@@ -12,25 +12,22 @@ module {
   public type TreeNode = Types.TreeNode;
   public type BankDetails = Types.BankDetails;
 
-  let hexChars = ["0","1","2","3","4","5","6","7","8","9","A","B","C","D","E","F"];
-
-  /// Generate a referral code from a principal — first 8 hex chars of blob
-  public func generateReferralCode(id : UserId) : Text {
-    let blob = id.toBlob();
-    let bytes = blob.vals();
-    var code = "";
-    var count = 0;
-    label hexLoop for (byte in bytes) {
-      if (count >= 4) break hexLoop;
-      let hi = (byte.toNat() / 16);
-      let lo = (byte.toNat() % 16);
-      code := code # hexChars[hi] # hexChars[lo];
-      count += 1;
+  /// Generate a simple referral code from a mobile number (last 5 digits with prefix)
+  public func generateReferralCode(mobile : UserId) : Text {
+    let prefix = "GUC";
+    // Take last 5 chars of mobile number as suffix
+    let mSize = mobile.size();
+    let suffix = if (mSize >= 5) {
+      let arr = mobile.toArray();
+      let startIdx : Int = mSize - 5;
+      Text.fromArray(arr.sliceToArray(startIdx, mSize));
+    } else {
+      mobile;
     };
-    code;
+    prefix # suffix;
   };
 
-  /// Create a new user record
+  /// Create a new user record. userId = mobileNumber (unique Text key)
   public func newUser(
     id : UserId,
     name : Text,
@@ -39,6 +36,7 @@ module {
     passwordHash : Text,
     sponsorId : ?UserId,
     isAdmin : Bool,
+    position : Text,
   ) : User {
     {
       id;
@@ -47,6 +45,7 @@ module {
       var mobileNumber;
       var passwordHash;
       var sponsorId;
+      var position;
       var leftChild = null;
       var rightChild = null;
       var walletBalance = 0;
@@ -59,6 +58,7 @@ module {
       var status = #active;
       var bankDetails = null;
       var upiId = null;
+      var pairPaid = Set.empty<Text>();
     };
   };
 
@@ -70,6 +70,7 @@ module {
       referralCode = user.referralCode;
       mobileNumber = user.mobileNumber;
       sponsorId = user.sponsorId;
+      position = user.position;
       leftChild = user.leftChild;
       rightChild = user.rightChild;
       walletBalance = user.walletBalance;
@@ -96,29 +97,50 @@ module {
     };
   };
 
-  /// Credit wallet balance for a user (commissions only — never buyer)
-  /// Only credits if user status is #active (skip if #hold or #inactive)
+  /// Credit wallet balance for a user (commissions only — never buyer).
+  /// Only credits if user status is #active (skip if #hold or #inactive).
+  /// Updates the specific income field AND recalculates totalIncome and walletBalance atomically.
   public func creditWallet(user : User, amount : Nat, commType : { #direct; #level; #pair }) : Bool {
     switch (user.status) {
       case (#active) {
-        user.walletBalance += amount;
-        user.totalIncome += amount;
         switch (commType) {
           case (#direct) { user.directIncome += amount };
           case (#level)  { user.levelIncome += amount };
           case (#pair)   { user.pairIncome += amount };
         };
+        // Recalculate totalIncome atomically
+        user.totalIncome := user.directIncome + user.levelIncome + user.pairIncome;
+        // walletBalance reflects all earned commissions
+        user.walletBalance := user.totalIncome;
         true;
       };
       case (#hold) {
-        // User on hold — skip commission, return false (amount stays in admin wallet)
+        // User on hold — skip commission
         false;
       };
       case (#inactive) {
-        // Inactive user — skip commission, return false
+        // Inactive user — skip commission
         false;
       };
     };
+  };
+
+  /// Check if a user has both left and right children with at least one purchase each.
+  /// Uses purchasedSet (list of buyers who have at least one approved order).
+  public func hasPairQualified(user : User, purchasedSet : List.List<UserId>) : Bool {
+    switch (user.leftChild, user.rightChild) {
+      case (?lid, ?rid) {
+        purchasedSet.find(func(id : UserId) : Bool { id == lid }) != null
+        and purchasedSet.find(func(id : UserId) : Bool { id == rid }) != null;
+      };
+      case _ false;
+    };
+  };
+
+  /// Build the canonical pair key for a user's left+right children.
+  /// Used to track which pairings have already been paid.
+  public func pairKey(leftId : UserId, rightId : UserId) : Text {
+    leftId # ":" # rightId;
   };
 
   /// Place a child into the binary tree using BFS (left slot first, then right)
@@ -162,14 +184,81 @@ module {
     };
   };
 
-  /// Check if a user has both left and right children with at least one purchase each
-  public func hasPairQualified(user : User, purchasedSet : List.List<UserId>) : Bool {
-    switch (user.leftChild, user.rightChild) {
-      case (?lid, ?rid) {
-        purchasedSet.find(func(id : UserId) : Bool { Principal.equal(id, lid) }) != null
-        and purchasedSet.find(func(id : UserId) : Bool { Principal.equal(id, rid) }) != null;
+  /// Place a child into the binary tree respecting a preferred position ("left" or "right").
+  /// Tries the preferred side of the direct sponsor first; if that slot is taken,
+  /// falls back to BFS on the preferred side only before using the other side.
+  public func placeChildWithPosition(sponsorId : UserId, childId : UserId, position : Text, users : Map.Map<UserId, User>) {
+    switch (users.get(sponsorId)) {
+      case null {};
+      case (?sponsor) {
+        let preferLeft = position != "right"; // default to left for anything other than "right"
+        if (preferLeft) {
+          if (sponsor.leftChild == null) {
+            sponsor.leftChild := ?childId;
+            return;
+          } else if (sponsor.rightChild == null) {
+            sponsor.rightChild := ?childId;
+            return;
+          };
+        } else {
+          if (sponsor.rightChild == null) {
+            sponsor.rightChild := ?childId;
+            return;
+          } else if (sponsor.leftChild == null) {
+            sponsor.leftChild := ?childId;
+            return;
+          };
+        };
+        // Both slots taken — BFS starting from the preferred side
+        let queue = List.empty<UserId>();
+        if (preferLeft) {
+          switch (sponsor.leftChild) { case (?lid) queue.add(lid); case null {} };
+          switch (sponsor.rightChild) { case (?rid) queue.add(rid); case null {} };
+        } else {
+          switch (sponsor.rightChild) { case (?rid) queue.add(rid); case null {} };
+          switch (sponsor.leftChild) { case (?lid) queue.add(lid); case null {} };
+        };
+        var placed = false;
+        label bfs while (not placed and queue.size() > 0) {
+          let currentId = queue.at(0);
+          var skipFirst = true;
+          let remaining = List.empty<UserId>();
+          queue.forEach(func(uid : UserId) {
+            if (skipFirst) { skipFirst := false }
+            else { remaining.add(uid) };
+          });
+          queue.clear();
+          queue.append(remaining);
+          switch (users.get(currentId)) {
+            case null {};
+            case (?u) {
+              if (preferLeft) {
+                if (u.leftChild == null) {
+                  u.leftChild := ?childId;
+                  placed := true;
+                } else if (u.rightChild == null) {
+                  u.rightChild := ?childId;
+                  placed := true;
+                } else {
+                  switch (u.leftChild) { case (?lid) queue.add(lid); case null {} };
+                  switch (u.rightChild) { case (?rid) queue.add(rid); case null {} };
+                };
+              } else {
+                if (u.rightChild == null) {
+                  u.rightChild := ?childId;
+                  placed := true;
+                } else if (u.leftChild == null) {
+                  u.leftChild := ?childId;
+                  placed := true;
+                } else {
+                  switch (u.rightChild) { case (?rid) queue.add(rid); case null {} };
+                  switch (u.leftChild) { case (?lid) queue.add(lid); case null {} };
+                };
+              };
+            };
+          };
+        };
       };
-      case _ false;
     };
   };
 
@@ -197,7 +286,7 @@ module {
     users.values()
       .filter(func(u : User) : Bool {
         switch (u.sponsorId) {
-          case (?sid) Principal.equal(sid, sponsorId);
+          case (?sid) sid == sponsorId;
           case null false;
         };
       })

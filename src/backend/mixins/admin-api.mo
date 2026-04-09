@@ -1,7 +1,6 @@
 import Map "mo:core/Map";
 import List "mo:core/List";
 import Time "mo:core/Time";
-import Principal "mo:core/Principal";
 import UserTypes "../types/users";
 import OrderTypes "../types/orders";
 import WithdrawalTypes "../types/withdrawals";
@@ -19,15 +18,12 @@ mixin (
   notifications : List.List<NotifTypes.Notification>,
   auditLog : List.List<AuditTypes.AuditLog>,
 ) {
-  // Hardcoded admin credentials for frontend login gate
+  // Hardcoded admin credentials
   let ADMIN_ID : Text = "6305462887";
   let ADMIN_PASSWORD : Text = "guccora@8433";
 
-  func isAdminCaller(caller : UserTypes.UserId) : Bool {
-    switch (users.get(caller)) {
-      case (?u) u.isAdmin;
-      case null false;
-    };
+  func isAdmin(adminId : Text, password : Text) : Bool {
+    adminId == ADMIN_ID and password == ADMIN_PASSWORD;
   };
 
   func addAdminAudit(action : Text, targetUserId : ?UserTypes.UserId, details : Text) {
@@ -41,9 +37,9 @@ mixin (
     });
   };
 
-  /// Validate admin credentials (frontend login gate — does NOT use IC principal auth)
+  /// Validate admin credentials (frontend login gate — no IC principal auth)
   public shared func adminLogin(adminId : Text, password : Text) : async { #ok : (); #err : Text } {
-    if (adminId == ADMIN_ID and password == ADMIN_PASSWORD) {
+    if (isAdmin(adminId, password)) {
       #ok(());
     } else {
       #err("Invalid admin credentials");
@@ -51,8 +47,8 @@ mixin (
   };
 
   /// Get all users (admin only)
-  public shared query ({ caller }) func adminGetAllUsers() : async { #ok : [UserTypes.UserPublic]; #err : Text } {
-    if (not isAdminCaller(caller)) return #err("Unauthorized");
+  public shared func adminGetAllUsers(adminId : Text, password : Text) : async { #ok : [UserTypes.UserPublic]; #err : Text } {
+    if (not isAdmin(adminId, password)) return #err("Unauthorized");
     let result = users.values()
       .map(func(u : UserTypes.User) : UserTypes.UserPublic { UserLib.toPublic(u) })
       .toArray();
@@ -60,11 +56,13 @@ mixin (
   };
 
   /// Set user status (admin only): #active | #inactive | #hold
-  public shared ({ caller }) func setUserStatus(
+  public shared func setUserStatus(
+    adminId : Text,
+    password : Text,
     userId : UserTypes.UserId,
     status : UserTypes.UserStatus,
   ) : async { #ok : (); #err : Text } {
-    if (not isAdminCaller(caller)) return #err("Unauthorized");
+    if (not isAdmin(adminId, password)) return #err("Unauthorized");
     switch (users.get(userId)) {
       case null { #err("User not found") };
       case (?user) {
@@ -91,11 +89,13 @@ mixin (
   };
 
   /// Reset a user's password (admin only)
-  public shared ({ caller }) func resetUserPassword(
+  public shared func resetUserPassword(
+    adminId : Text,
+    password : Text,
     userId : UserTypes.UserId,
     newPassword : Text,
   ) : async { #ok : (); #err : Text } {
-    if (not isAdminCaller(caller)) return #err("Unauthorized");
+    if (not isAdmin(adminId, password)) return #err("Unauthorized");
     if (newPassword.size() == 0) return #err("Password cannot be empty");
     switch (users.get(userId)) {
       case null { #err("User not found") };
@@ -108,8 +108,8 @@ mixin (
   };
 
   /// Get all orders (admin only) — all statuses
-  public shared query ({ caller }) func adminGetAllOrders() : async { #ok : [OrderTypes.OrderPublic]; #err : Text } {
-    if (not isAdminCaller(caller)) return #err("Unauthorized");
+  public shared func adminGetAllOrders(adminId : Text, password : Text) : async { #ok : [OrderTypes.OrderPublic]; #err : Text } {
+    if (not isAdmin(adminId, password)) return #err("Unauthorized");
     let result = orders
       .map<OrderTypes.Order, OrderTypes.OrderPublic>(func(o : OrderTypes.Order) : OrderTypes.OrderPublic {
         {
@@ -129,8 +129,8 @@ mixin (
   };
 
   /// Get all withdrawal requests (admin only)
-  public shared query ({ caller }) func adminGetAllWithdrawals() : async { #ok : [WithdrawalTypes.WithdrawRequestPublic]; #err : Text } {
-    if (not isAdminCaller(caller)) return #err("Unauthorized");
+  public shared func adminGetAllWithdrawals(adminId : Text, password : Text) : async { #ok : [WithdrawalTypes.WithdrawRequestPublic]; #err : Text } {
+    if (not isAdmin(adminId, password)) return #err("Unauthorized");
     let result = withdrawals
       .map<WithdrawalTypes.WithdrawRequest, WithdrawalTypes.WithdrawRequestPublic>(func(r : WithdrawalTypes.WithdrawRequest) : WithdrawalTypes.WithdrawRequestPublic {
         WithdrawLib.toPublic(r)
@@ -140,8 +140,8 @@ mixin (
   };
 
   /// Approve a withdrawal request (admin only)
-  public shared ({ caller }) func adminApproveWithdrawal(requestId : Nat) : async { #ok : (); #err : Text } {
-    if (not isAdminCaller(caller)) return #err("Unauthorized");
+  public shared func adminApproveWithdrawal(adminId : Text, password : Text, requestId : Nat) : async { #ok : (); #err : Text } {
+    if (not isAdmin(adminId, password)) return #err("Unauthorized");
     let reqOpt = withdrawals.find(func(r : WithdrawalTypes.WithdrawRequest) : Bool {
       r.id == requestId
     });
@@ -163,8 +163,8 @@ mixin (
   };
 
   /// Reject a withdrawal request (admin only)
-  public shared ({ caller }) func adminRejectWithdrawal(requestId : Nat) : async { #ok : (); #err : Text } {
-    if (not isAdminCaller(caller)) return #err("Unauthorized");
+  public shared func adminRejectWithdrawal(adminId : Text, password : Text, requestId : Nat) : async { #ok : (); #err : Text } {
+    if (not isAdmin(adminId, password)) return #err("Unauthorized");
     let reqOpt = withdrawals.find(func(r : WithdrawalTypes.WithdrawRequest) : Bool {
       r.id == requestId
     });
@@ -180,11 +180,13 @@ mixin (
   };
 
   /// Send a notification to a user or broadcast to all (admin only)
-  public shared ({ caller }) func adminSendNotification(
+  public shared func adminSendNotification(
+    adminId : Text,
+    password : Text,
     recipientId : ?UserTypes.UserId,
     message : Text,
   ) : async { #ok : (); #err : Text } {
-    if (not isAdminCaller(caller)) return #err("Unauthorized");
+    if (not isAdmin(adminId, password)) return #err("Unauthorized");
     if (message.size() == 0) return #err("Message cannot be empty");
     let id = notifications.size() + 1;
     notifications.add({
@@ -199,8 +201,8 @@ mixin (
   };
 
   /// Get all sent notifications (admin view)
-  public shared query ({ caller }) func adminGetNotificationHistory() : async { #ok : [NotifTypes.NotificationPublic]; #err : Text } {
-    if (not isAdminCaller(caller)) return #err("Unauthorized");
+  public shared func adminGetNotificationHistory(adminId : Text, password : Text) : async { #ok : [NotifTypes.NotificationPublic]; #err : Text } {
+    if (not isAdmin(adminId, password)) return #err("Unauthorized");
     let result = notifications
       .map<NotifTypes.Notification, NotifTypes.NotificationPublic>(func(n : NotifTypes.Notification) : NotifTypes.NotificationPublic {
         {
@@ -216,14 +218,14 @@ mixin (
   };
 
   /// Get recent audit log entries (admin only)
-  public shared query ({ caller }) func adminGetAuditLog() : async { #ok : [AuditTypes.AuditLog]; #err : Text } {
-    if (not isAdminCaller(caller)) return #err("Unauthorized");
+  public shared func adminGetAuditLog(adminId : Text, password : Text) : async { #ok : [AuditTypes.AuditLog]; #err : Text } {
+    if (not isAdmin(adminId, password)) return #err("Unauthorized");
     #ok(auditLog.toArray());
   };
 
   /// Get platform statistics (admin only)
-  public shared query ({ caller }) func adminGetStats() : async { #ok : OrderTypes.AdminStats; #err : Text } {
-    if (not isAdminCaller(caller)) return #err("Unauthorized");
+  public shared func adminGetStats(adminId : Text, password : Text) : async { #ok : OrderTypes.AdminStats; #err : Text } {
+    if (not isAdmin(adminId, password)) return #err("Unauthorized");
     let pendingWithdrawals = withdrawals.filter(func(r : WithdrawalTypes.WithdrawRequest) : Bool {
       r.status == #pending
     }).size();

@@ -2,7 +2,6 @@ import Map "mo:core/Map";
 import List "mo:core/List";
 import Set "mo:core/Set";
 import Time "mo:core/Time";
-import Principal "mo:core/Principal";
 import UserTypes "../types/users";
 import OrderTypes "../types/orders";
 import UserLib "users";
@@ -14,16 +13,29 @@ module {
   public type CommissionRecord = OrderTypes.CommissionRecord;
   public type AdminWallet = OrderTypes.AdminWallet;
 
-  public let DIRECT_INCOME : Nat = 40;
-  public let LEVEL_INCOME : Nat = 5;
-  public let LEVEL_DEPTH : Nat = 10;
-  public let PAIR_INCOME : Nat = 3;
-  public let MAX_PAYOUT_PER_ORDER : Nat = 93;
+  // Per-plan commission rates keyed by planPrice.
+  // Returns (directIncome, levelPerLevel, pairIncome).
+  func planRates(planPrice : Nat) : (Nat, Nat, Nat) {
+    if (planPrice <= 599)       { (40,  5,  3) }
+    else if (planPrice <= 999)  { (70,  8,  5) }
+    else if (planPrice <= 1999) { (140, 16, 10) }
+    else                        { (210, 24, 15) }
+  };
 
-  /// Distribute all commissions for a new order.
-  /// Returns list of CommissionRecords generated.
-  /// Buyer wallet is NEVER touched.
-  /// Skips users with status #hold or #inactive.
+  public let LEVEL_DEPTH : Nat = 10;
+
+  /// Distribute all commissions for a newly approved order.
+  /// Returns array of CommissionRecords generated (also stored in commissions List by caller).
+  ///
+  /// Rules:
+  ///   - Buyer's wallet is NEVER touched.
+  ///   - Direct income goes to the immediate sponsor (skip if #hold or #inactive).
+  ///   - Level income walks up the sponsor chain for exactly LEVEL_DEPTH levels:
+  ///       skip (move to next level) if upline is #hold; stop entirely if #inactive.
+  ///   - Pair income is awarded to any upline sponsor (walking the chain) whose
+  ///       left+right children have both purchased. The user's own pairPaid Set
+  ///       (keyed by "leftId:rightId") prevents duplicate awards across orders.
+  ///   - totalIncome and walletBalance are recalculated atomically in creditWallet.
   public func distributeCommissions(
     order : Order,
     users : Map.Map<UserId, User>,
@@ -32,86 +44,39 @@ module {
     nextCommissionId : Nat,
   ) : [CommissionRecord] {
     let records = List.empty<CommissionRecord>();
-    var totalPaid : Nat = 0;
     var commId = nextCommissionId;
     let now = Time.now();
-
-    // Track which users already received pair income this order (avoid double-paying)
-    let pairPaid = Set.empty<UserId>();
-
-    // Step 1: Direct income to immediate sponsor (₹40)
     let buyerId = order.buyer;
+
+    // Determine per-plan rates
+    let (directAmt, levelAmt, pairAmt) = planRates(order.planPrice);
+
+    // ------------------------------------------------------------------
+    // Step 1: Direct income to the immediate sponsor
+    // ------------------------------------------------------------------
     switch (users.get(buyerId)) {
       case null {};
       case (?buyer) {
         switch (buyer.sponsorId) {
           case null {};
           case (?sponsorId) {
-            if (totalPaid + DIRECT_INCOME <= MAX_PAYOUT_PER_ORDER) {
-              switch (users.get(sponsorId)) {
-                case null {};
-                case (?sponsor) {
-                  // Fix 3: Skip direct income if sponsor is on #hold
-                  if (sponsor.status != #hold) {
-                    let credited = UserLib.creditWallet(sponsor, DIRECT_INCOME, #direct);
-                    if (credited) {
-                      adminWallet.totalCommissionsPaid += DIRECT_INCOME;
-                      totalPaid += DIRECT_INCOME;
-                      records.add({
-                        id = commId;
-                        orderId = order.id;
-                        recipient = sponsorId;
-                        amount = DIRECT_INCOME;
-                        commType = #direct;
-                        level = 0;
-                        timestamp = now;
-                      });
-                      commId += 1;
-                    };
-                  };
-
-                  // Step 2: Level income — walk up from sponsor's sponsor, 10 levels, ₹5 each
-                  var current : ?UserId = sponsor.sponsorId;
-                  var level = 1;
-                  label levelLoop while (level <= LEVEL_DEPTH) {
-                    if (totalPaid + LEVEL_INCOME > MAX_PAYOUT_PER_ORDER) break levelLoop;
-                    switch (current) {
-                      case null break levelLoop;
-                      case (?uplineId) {
-                        switch (users.get(uplineId)) {
-                          case null { break levelLoop };
-                          case (?upline) {
-                            // Break on #inactive — do NOT propagate further up
-                            if (upline.status == #inactive) {
-                              break levelLoop;
-                            };
-                            // Fix 1: Skip #hold users but CONTINUE traversal upward
-                            if (upline.status == #hold) {
-                              current := upline.sponsorId;
-                              level += 1;
-                            } else {
-                              let lvlCredited = UserLib.creditWallet(upline, LEVEL_INCOME, #level);
-                              if (lvlCredited) {
-                                adminWallet.totalCommissionsPaid += LEVEL_INCOME;
-                                totalPaid += LEVEL_INCOME;
-                                records.add({
-                                  id = commId;
-                                  orderId = order.id;
-                                  recipient = uplineId;
-                                  amount = LEVEL_INCOME;
-                                  commType = #level;
-                                  level;
-                                  timestamp = now;
-                                });
-                                commId += 1;
-                              };
-                              current := upline.sponsorId;
-                              level += 1;
-                            };
-                          };
-                        };
-                      };
-                    };
+            switch (users.get(sponsorId)) {
+              case null {};
+              case (?sponsor) {
+                if (sponsor.status == #active) {
+                  let credited = UserLib.creditWallet(sponsor, directAmt, #direct);
+                  if (credited) {
+                    adminWallet.totalCommissionsPaid += directAmt;
+                    records.add({
+                      id = commId;
+                      orderId = order.id;
+                      recipient = sponsorId;
+                      amount = directAmt;
+                      commType = #direct;
+                      level = 0;
+                      timestamp = now;
+                    });
+                    commId += 1;
                   };
                 };
               };
@@ -121,14 +86,68 @@ module {
       };
     };
 
-    // Step 3: Pair income — check the sponsor chain for pair qualification
-    // For each user in the commission chain who now has BOTH children with purchases, award ₹3
+    // ------------------------------------------------------------------
+    // Step 2: Level income — walk up from direct sponsor, 10 levels
+    // Level 1 = buyer's direct sponsor (same user who received direct income)
+    // ------------------------------------------------------------------
+    switch (users.get(buyerId)) {
+      case null {};
+      case (?buyer) {
+        // Level chain starts from the buyer's direct sponsor (level 1)
+        var current : ?UserId = buyer.sponsorId;
+        var level = 1;
+        label levelLoop while (level <= LEVEL_DEPTH) {
+          switch (current) {
+            case null break levelLoop;
+            case (?uplineId) {
+              switch (users.get(uplineId)) {
+                case null { break levelLoop };
+                case (?upline) {
+                  if (upline.status == #inactive) {
+                    // Stop distribution entirely on inactive
+                    break levelLoop;
+                  };
+                  if (upline.status == #hold) {
+                    // Skip this level but continue up the chain
+                    current := upline.sponsorId;
+                    level += 1;
+                  } else {
+                    // #active — credit level income
+                    let lvlCredited = UserLib.creditWallet(upline, levelAmt, #level);
+                    if (lvlCredited) {
+                      adminWallet.totalCommissionsPaid += levelAmt;
+                      records.add({
+                        id = commId;
+                        orderId = order.id;
+                        recipient = uplineId;
+                        amount = levelAmt;
+                        commType = #level;
+                        level;
+                        timestamp = now;
+                      });
+                      commId += 1;
+                    };
+                    current := upline.sponsorId;
+                    level += 1;
+                  };
+                };
+              };
+            };
+          };
+        };
+      };
+    };
+
+    // ------------------------------------------------------------------
+    // Step 3: Pair income — walk up the full sponsor chain
+    // Award any upline who now has both left+right children purchased.
+    // Use each upline's persistent pairPaid Set to prevent double-payment.
+    // ------------------------------------------------------------------
     switch (users.get(buyerId)) {
       case null {};
       case (?buyer) {
         var chainUser : ?UserId = buyer.sponsorId;
         label pairLoop loop {
-          if (totalPaid + PAIR_INCOME > MAX_PAYOUT_PER_ORDER) break pairLoop;
           switch (chainUser) {
             case null break pairLoop;
             case (?uid) {
@@ -136,32 +155,42 @@ module {
                 case null { break pairLoop };
                 case (?u) {
                   if (u.status == #inactive) {
+                    // Stop climbing on inactive
                     break pairLoop;
                   };
-                  // Fix 2: Skip #hold users for pair income but CONTINUE traversal upward
-                  if (u.status != #hold) {
-                    // Only award pair income once per user per order
-                    if (not pairPaid.contains(uid)) {
-                      if (UserLib.hasPairQualified(u, purchasedSet)) {
-                        let pairCredited = UserLib.creditWallet(u, PAIR_INCOME, #pair);
-                        if (pairCredited) {
-                          adminWallet.totalCommissionsPaid += PAIR_INCOME;
-                          totalPaid += PAIR_INCOME;
-                          pairPaid.add(uid);
-                          records.add({
-                            id = commId;
-                            orderId = order.id;
-                            recipient = uid;
-                            amount = PAIR_INCOME;
-                            commType = #pair;
-                            level = 0;
-                            timestamp = now;
-                          });
-                          commId += 1;
+                  if (u.status == #active) {
+                    // Check if this user qualifies for pair income
+                    switch (u.leftChild, u.rightChild) {
+                      case (?lid, ?rid) {
+                        let key = UserLib.pairKey(lid, rid);
+                        let alreadyPaid = u.pairPaid.contains(key);
+                        if (not alreadyPaid) {
+                          let leftBought = purchasedSet.find(func(id : UserId) : Bool { id == lid }) != null;
+                          let rightBought = purchasedSet.find(func(id : UserId) : Bool { id == rid }) != null;
+                          if (leftBought and rightBought) {
+                            let pairCredited = UserLib.creditWallet(u, pairAmt, #pair);
+                            if (pairCredited) {
+                              // Mark this pairing as paid — persists across future orders
+                              u.pairPaid.add(key);
+                              adminWallet.totalCommissionsPaid += pairAmt;
+                              records.add({
+                                id = commId;
+                                orderId = order.id;
+                                recipient = uid;
+                                amount = pairAmt;
+                                commType = #pair;
+                                level = 0;
+                                timestamp = now;
+                              });
+                              commId += 1;
+                            };
+                          };
                         };
                       };
+                      case _ {};
                     };
                   };
+                  // Continue up the chain regardless of hold/active
                   chainUser := u.sponsorId;
                 };
               };
@@ -171,7 +200,7 @@ module {
       };
     };
 
-    // Update admin net profit (safe subtraction)
+    // Update admin net profit
     if (adminWallet.totalReceived >= adminWallet.totalCommissionsPaid) {
       adminWallet.netProfit := adminWallet.totalReceived - adminWallet.totalCommissionsPaid;
     } else {

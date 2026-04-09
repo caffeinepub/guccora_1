@@ -26,6 +26,8 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [showForgotInfo, setShowForgotInfo] = useState(false);
+  const [forgotMobile, setForgotMobile] = useState("");
+  const [forgotSubmitted, setForgotSubmitted] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -39,9 +41,10 @@ export default function LoginPage() {
     }
     try {
       const result = await loginUser({ mobile: mobile.trim(), password });
-      login(result.userId.toText());
+      // userId is a plain string (mobile number) — no .toText() needed
+      login(result.userId, "user");
       toast.success("Welcome back to GUCCORA!");
-      navigate({ to: "/dashboard" });
+      navigate({ to: "/user-dashboard" });
     } catch (err) {
       toast.error(
         err instanceof Error
@@ -158,7 +161,7 @@ export default function LoginPage() {
                 </div>
               </div>
 
-              {/* Forgot password info box */}
+              {/* Forgot password flow */}
               {showForgotInfo && (
                 <div
                   className="relative bg-muted/50 border border-border rounded-xl p-4 text-sm"
@@ -167,23 +170,65 @@ export default function LoginPage() {
                   <button
                     type="button"
                     className="absolute top-2 right-2 text-muted-foreground hover:text-foreground"
-                    onClick={() => setShowForgotInfo(false)}
+                    onClick={() => {
+                      setShowForgotInfo(false);
+                      setForgotMobile("");
+                      setForgotSubmitted(false);
+                    }}
                     aria-label="Close"
                   >
                     <X className="h-4 w-4" />
                   </button>
-                  <div className="flex items-start gap-2.5 pr-4">
-                    <AlertCircle className="h-4 w-4 text-primary mt-0.5 flex-shrink-0" />
-                    <div className="space-y-1">
-                      <p className="font-semibold text-foreground text-xs">
-                        Password Reset
+
+                  {!forgotSubmitted ? (
+                    <div className="space-y-3 pr-4">
+                      <div className="flex items-center gap-2">
+                        <AlertCircle className="h-4 w-4 text-primary flex-shrink-0" />
+                        <p className="font-semibold text-foreground text-xs">
+                          Forgot Password
+                        </p>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Enter your registered mobile number below.
                       </p>
-                      <p className="text-xs text-muted-foreground leading-relaxed">
-                        Please contact your admin to reset your password. The
-                        admin can reset your password from the Admin Panel.
-                      </p>
+                      <div className="space-y-1.5">
+                        <input
+                          type="tel"
+                          placeholder="10-digit mobile number"
+                          value={forgotMobile}
+                          onChange={(e) =>
+                            setForgotMobile(
+                              e.target.value.replace(/\D/g, "").slice(0, 10),
+                            )
+                          }
+                          className="w-full bg-background border border-input rounded-lg px-3 py-2 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/50"
+                          data-ocid="forgot-mobile-input"
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        className="w-full bg-primary text-primary-foreground rounded-lg px-3 py-2 text-xs font-semibold hover:bg-primary/90 transition-colors disabled:opacity-50"
+                        disabled={forgotMobile.length !== 10}
+                        onClick={() => setForgotSubmitted(true)}
+                        data-ocid="forgot-submit"
+                      >
+                        Submit
+                      </button>
                     </div>
-                  </div>
+                  ) : (
+                    <div className="flex items-start gap-2.5 pr-4">
+                      <AlertCircle className="h-4 w-4 text-primary mt-0.5 flex-shrink-0" />
+                      <div className="space-y-1">
+                        <p className="font-semibold text-foreground text-xs">
+                          Request Received
+                        </p>
+                        <p className="text-xs text-muted-foreground leading-relaxed">
+                          Your request has been received. Please contact admin
+                          to reset your password.
+                        </p>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 

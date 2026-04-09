@@ -38,7 +38,7 @@ export default function AdminPage() {
 
   useEffect(() => {
     if (!isInitializing && !isAdmin) {
-      navigate({ to: "/admin-login" });
+      navigate({ to: "/" });
     }
   }, [isAdmin, isInitializing, navigate]);
 

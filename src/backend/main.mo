@@ -1,22 +1,25 @@
 import Map "mo:core/Map";
 import List "mo:core/List";
-import Principal "mo:core/Principal";
 import UserTypes "types/users";
 import OrderTypes "types/orders";
 import PlanTypes "types/plans";
 import WithdrawalTypes "types/withdrawals";
 import NotifTypes "types/notifications";
 import AuditTypes "types/audit";
-import Migration "migration";
+
+
 import UsersMixin "mixins/users-api";
 import PlansMixin "mixins/plans-api";
 import OrdersMixin "mixins/orders-api";
 import WithdrawalsMixin "mixins/withdrawals-api";
 import AdminMixin "mixins/admin-api";
 
-(with migration = Migration.run)
+
+
+
 actor {
   // --- Shared state ---
+  // UserId = Text (mobile number) — no IC identity required
   let users = Map.empty<UserTypes.UserId, UserTypes.User>();
   let referralIndex = Map.empty<Text, UserTypes.UserId>();
   let mobileIndex = Map.empty<Text, UserTypes.UserId>();
@@ -59,18 +62,4 @@ actor {
   include OrdersMixin(users, referralIndex, products, orders, commissions, purchasedSet, adminWallet, notifications, auditLog, nextOrderId, nextCommissionId, nextNotificationId, nextAuditId);
   include WithdrawalsMixin(users, withdrawals, nextWithdrawalId);
   include AdminMixin(users, mobileIndex, orders, withdrawals, adminWallet, notifications, auditLog);
-
-  /// Make the caller an admin if no admin exists yet.
-  public shared ({ caller }) func initAdmin() : async { #ok : (); #err : Text } {
-    if (caller.isAnonymous()) return #err("Anonymous caller not allowed");
-    let alreadyHasAdmin = users.values().any(func(u : UserTypes.User) : Bool { u.isAdmin });
-    if (alreadyHasAdmin) return #err("Admin already initialized");
-    switch (users.get(caller)) {
-      case null { #err("You must register first") };
-      case (?u) {
-        u.isAdmin := true;
-        #ok(());
-      };
-    };
-  };
 };

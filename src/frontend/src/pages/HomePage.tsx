@@ -89,6 +89,7 @@ export default function HomePage() {
     password: "",
     confirmPassword: "",
     referralCode: "",
+    position: "left",
   });
   const [showPassword, setShowPassword] = useState(false);
 
@@ -98,7 +99,8 @@ export default function HomePage() {
 
   async function handleRegister(e: React.FormEvent) {
     e.preventDefault();
-    const { name, mobile, password, confirmPassword, referralCode } = form;
+    const { name, mobile, password, confirmPassword, referralCode, position } =
+      form;
 
     if (!name.trim() || !mobile.trim() || !password) {
       toast.error("Please fill all required fields");
@@ -123,10 +125,14 @@ export default function HomePage() {
         mobile: mobile.trim(),
         password,
         referralCode: referralCode.trim() || null,
+        position: position as "left" | "right",
       });
-      login(user.id.toText());
-      toast.success("Welcome to GUCCORA! Your account is ready.");
-      navigate({ to: "/dashboard" });
+      // user.id is already a string (mobile number) — no .toText() needed
+      login(user.id, "user");
+      toast.success(
+        "Welcome to GUCCORA! Complete your profile to get started.",
+      );
+      navigate({ to: "/profile" });
     } catch (err) {
       toast.error(
         err instanceof Error ? err.message : "Registration failed. Try again.",
@@ -526,6 +532,22 @@ export default function HomePage() {
                     className="bg-background h-11"
                     data-ocid="reg-referral"
                   />
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label htmlFor="reg-position" className="text-sm font-medium">
+                    Position <span className="text-destructive">*</span>
+                  </Label>
+                  <select
+                    id="reg-position"
+                    value={form.position}
+                    onChange={(e) => updateForm("position", e.target.value)}
+                    className="w-full bg-background border border-input rounded-md px-3 h-11 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary/50"
+                    data-ocid="reg-position"
+                  >
+                    <option value="left">Left</option>
+                    <option value="right">Right</option>
+                  </select>
                 </div>
 
                 <Button

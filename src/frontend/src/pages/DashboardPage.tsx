@@ -14,6 +14,7 @@ import {
   Clock,
   Copy,
   GitBranch,
+  Pencil,
   ShoppingBag,
   TrendingUp,
   Users,
@@ -225,7 +226,7 @@ function TreeNodeBox({ node, depth = 0 }: { node: TreeNode; depth?: number }) {
           <div className="absolute top-0 left-1/2 -translate-x-1/2 w-px h-3 bg-border" />
           {node.children.map((child) => (
             <div
-              key={child.user.toText()}
+              key={child.user}
               className="flex flex-col items-center gap-1 mt-3"
             >
               <div className="w-px h-3 bg-border mx-auto" />
@@ -241,7 +242,7 @@ function TreeNodeBox({ node, depth = 0 }: { node: TreeNode; depth?: number }) {
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function DashboardPage() {
-  const { isAuthenticated, isInitializing } = useAuth();
+  const { isAuthenticated, isInitializing, isAdmin } = useAuth();
   const navigate = useNavigate();
   const [teamExpanded, setTeamExpanded] = useState(false);
 
@@ -270,33 +271,6 @@ export default function DashboardPage() {
     [sortedNotifications],
   );
 
-  if (!profileLoading && isAuthenticated && !profile) {
-    return (
-      <div className="min-h-[calc(100vh-7rem)] flex items-center justify-center px-4">
-        <div className="bg-card border border-border rounded-2xl p-8 max-w-sm w-full text-center space-y-4 shadow-elevated">
-          <div className="w-14 h-14 mx-auto rounded-2xl bg-primary/10 border border-primary/30 flex items-center justify-center">
-            <Users className="h-6 w-6 text-primary" />
-          </div>
-          <h2 className="text-xl font-display font-bold text-foreground">
-            Complete Your Profile
-          </h2>
-          <p className="text-sm text-muted-foreground">
-            You're connected! Now set up your GUCCORA account to start earning
-            commissions.
-          </p>
-          <Button
-            className="w-full bg-primary text-primary-foreground hover:bg-primary/90 h-11 font-semibold rounded-xl"
-            onClick={() => navigate({ to: "/" })}
-            data-ocid="dashboard-register-cta"
-          >
-            Create Your Account
-            <ArrowRight className="h-4 w-4 ml-2" />
-          </Button>
-        </div>
-      </div>
-    );
-  }
-
   const referralLink = referralCode
     ? `${window.location.origin}/?ref=${referralCode}`
     : "";
@@ -323,7 +297,7 @@ export default function DashboardPage() {
             <div>
               <div className="flex items-center gap-2 mb-1">
                 <p className="text-sm text-muted-foreground">Welcome back,</p>
-                {profile?.isAdmin && (
+                {isAdmin && (
                   <Badge className="bg-primary/20 text-primary border-primary/30 text-xs">
                     Admin
                   </Badge>
@@ -359,7 +333,7 @@ export default function DashboardPage() {
                   Withdraw
                 </Button>
               )}
-              {profile?.isAdmin && (
+              {isAdmin && (
                 <Button
                   size="sm"
                   variant="outline"
@@ -374,6 +348,36 @@ export default function DashboardPage() {
           </div>
         </div>
       </section>
+
+      {/* Incomplete profile inline banner — non-blocking */}
+      {!profileLoading && isAuthenticated && !profile && (
+        <div
+          className="bg-primary/8 border-b border-primary/20 px-4 py-3"
+          data-ocid="profile-incomplete-banner"
+        >
+          <div className="container max-w-4xl mx-auto flex items-center justify-between gap-3 flex-wrap">
+            <div className="flex items-center gap-2 min-w-0">
+              <Pencil className="h-4 w-4 text-primary flex-shrink-0" />
+              <p className="text-sm text-foreground font-medium">
+                Your profile is not set up yet.{" "}
+                <span className="text-muted-foreground font-normal">
+                  Register an account to start earning commissions.
+                </span>
+              </p>
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              className="flex-shrink-0 border-primary/40 text-primary hover:bg-primary/10 gap-1.5"
+              onClick={() => navigate({ to: "/" })}
+              data-ocid="profile-incomplete-cta"
+            >
+              Create Account
+              <ArrowRight className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* Commission Wallet + Income Stats */}
       <section className="px-4 py-6">
@@ -684,7 +688,7 @@ export default function DashboardPage() {
                   <div className="space-y-2">
                     {downline.map((member) => (
                       <div
-                        key={member.id.toText()}
+                        key={member.id}
                         className="flex items-center justify-between bg-card border border-border rounded-xl px-4 py-3"
                         data-ocid="team-member-row"
                       >

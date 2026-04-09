@@ -22,7 +22,7 @@ export const OrderStatus = IDL.Variant({
   'rejected' : IDL.Null,
 });
 export const Timestamp = IDL.Int;
-export const UserId = IDL.Principal;
+export const UserId = IDL.Text;
 export const OrderPublic = IDL.Record({
   'id' : IDL.Nat,
   'status' : OrderStatus,
@@ -55,6 +55,7 @@ export const UserPublic = IDL.Record({
   'leftChild' : IDL.Opt(UserId),
   'mobileNumber' : IDL.Text,
   'isAdmin' : IDL.Bool,
+  'position' : IDL.Text,
   'pairIncome' : IDL.Nat,
   'walletBalance' : IDL.Nat,
 });
@@ -125,69 +126,69 @@ export const Plan = IDL.Record({
 
 export const idlService = IDL.Service({
   'adminAddProduct' : IDL.Func(
-      [IDL.Text, IDL.Nat, IDL.Opt(IDL.Text)],
+      [IDL.Text, IDL.Text, IDL.Text, IDL.Nat, IDL.Opt(IDL.Text)],
       [IDL.Variant({ 'ok' : ProductPublic, 'err' : IDL.Text })],
       [],
     ),
   'adminApproveOrder' : IDL.Func(
-      [IDL.Nat],
+      [IDL.Text, IDL.Text, IDL.Nat],
       [IDL.Variant({ 'ok' : IDL.Null, 'err' : IDL.Text })],
       [],
     ),
   'adminApproveWithdrawal' : IDL.Func(
-      [IDL.Nat],
+      [IDL.Text, IDL.Text, IDL.Nat],
       [IDL.Variant({ 'ok' : IDL.Null, 'err' : IDL.Text })],
       [],
     ),
   'adminDeleteProduct' : IDL.Func(
-      [IDL.Nat],
+      [IDL.Text, IDL.Text, IDL.Nat],
       [IDL.Variant({ 'ok' : IDL.Null, 'err' : IDL.Text })],
       [],
     ),
   'adminGetAllOrders' : IDL.Func(
-      [],
+      [IDL.Text, IDL.Text],
       [IDL.Variant({ 'ok' : IDL.Vec(OrderPublic), 'err' : IDL.Text })],
-      ['query'],
+      [],
     ),
   'adminGetAllUsers' : IDL.Func(
-      [],
+      [IDL.Text, IDL.Text],
       [IDL.Variant({ 'ok' : IDL.Vec(UserPublic), 'err' : IDL.Text })],
-      ['query'],
+      [],
     ),
   'adminGetAllWithdrawals' : IDL.Func(
-      [],
+      [IDL.Text, IDL.Text],
       [
         IDL.Variant({
           'ok' : IDL.Vec(WithdrawRequestPublic),
           'err' : IDL.Text,
         }),
       ],
-      ['query'],
+      [],
     ),
   'adminGetAuditLog' : IDL.Func(
-      [],
+      [IDL.Text, IDL.Text],
       [IDL.Variant({ 'ok' : IDL.Vec(AuditLog), 'err' : IDL.Text })],
-      ['query'],
+      [],
     ),
   'adminGetNotificationHistory' : IDL.Func(
-      [],
+      [IDL.Text, IDL.Text],
       [IDL.Variant({ 'ok' : IDL.Vec(NotificationPublic), 'err' : IDL.Text })],
-      ['query'],
+      [],
     ),
   'adminGetPendingOrders' : IDL.Func(
-      [],
+      [IDL.Text, IDL.Text],
       [IDL.Variant({ 'ok' : IDL.Vec(OrderPublic), 'err' : IDL.Text })],
-      ['query'],
+      [],
     ),
   'adminGetProducts' : IDL.Func(
-      [],
+      [IDL.Text, IDL.Text],
       [IDL.Variant({ 'ok' : IDL.Vec(ProductPublic), 'err' : IDL.Text })],
-      ['query'],
+      [],
     ),
   'adminGetStats' : IDL.Func(
-      [],
+      [IDL.Text, IDL.Text],
       [IDL.Variant({ 'ok' : AdminStats, 'err' : IDL.Text })],
-      ['query'],
+      [],
     ),
   'adminLogin' : IDL.Func(
       [IDL.Text, IDL.Text],
@@ -195,62 +196,61 @@ export const idlService = IDL.Service({
       [],
     ),
   'adminRejectOrder' : IDL.Func(
-      [IDL.Nat, IDL.Text],
+      [IDL.Text, IDL.Text, IDL.Nat, IDL.Text],
       [IDL.Variant({ 'ok' : IDL.Null, 'err' : IDL.Text })],
       [],
     ),
   'adminRejectWithdrawal' : IDL.Func(
-      [IDL.Nat],
+      [IDL.Text, IDL.Text, IDL.Nat],
       [IDL.Variant({ 'ok' : IDL.Null, 'err' : IDL.Text })],
       [],
     ),
   'adminSendNotification' : IDL.Func(
-      [IDL.Opt(UserId), IDL.Text],
+      [IDL.Text, IDL.Text, IDL.Opt(UserId), IDL.Text],
       [IDL.Variant({ 'ok' : IDL.Null, 'err' : IDL.Text })],
       [],
     ),
   'adminUpdateProduct' : IDL.Func(
-      [IDL.Nat, IDL.Text, IDL.Nat, IDL.Opt(IDL.Text)],
+      [IDL.Text, IDL.Text, IDL.Nat, IDL.Text, IDL.Nat, IDL.Opt(IDL.Text)],
       [IDL.Variant({ 'ok' : IDL.Null, 'err' : IDL.Text })],
       [],
     ),
-  'getDirectDownline' : IDL.Func([], [IDL.Vec(UserPublic)], ['query']),
+  'getDirectDownline' : IDL.Func([UserId], [IDL.Vec(UserPublic)], ['query']),
   'getDownlineTree' : IDL.Func(
-      [],
+      [UserId],
       [IDL.Variant({ 'ok' : TreeNode, 'err' : IDL.Text })],
       ['query'],
     ),
-  'getMyNotifications' : IDL.Func([], [IDL.Vec(NotificationPublic)], ['query']),
-  'getMyOrders' : IDL.Func([], [IDL.Vec(OrderPublic)], ['query']),
+  'getMyNotifications' : IDL.Func(
+      [UserId],
+      [IDL.Vec(NotificationPublic)],
+      ['query'],
+    ),
+  'getMyOrders' : IDL.Func([UserId], [IDL.Vec(OrderPublic)], ['query']),
   'getMyPaymentDetails' : IDL.Func(
-      [],
+      [UserId],
       [IDL.Variant({ 'ok' : PaymentDetails, 'err' : IDL.Text })],
       ['query'],
     ),
   'getMyProfile' : IDL.Func(
-      [],
+      [UserId],
       [IDL.Variant({ 'ok' : UserPublic, 'err' : IDL.Text })],
       ['query'],
     ),
-  'getMyReferralCode' : IDL.Func([], [IDL.Text], ['query']),
+  'getMyReferralCode' : IDL.Func([UserId], [IDL.Text], ['query']),
   'getMyWallet' : IDL.Func(
-      [],
+      [UserId],
       [IDL.Variant({ 'ok' : WalletInfo, 'err' : IDL.Text })],
       ['query'],
     ),
   'getMyWithdrawals' : IDL.Func(
-      [],
+      [UserId],
       [IDL.Vec(WithdrawRequestPublic)],
       ['query'],
     ),
   'getPlans' : IDL.Func([], [IDL.Vec(Plan)], ['query']),
   'getProducts' : IDL.Func([], [IDL.Vec(ProductPublic)], ['query']),
   'getUserByMobile' : IDL.Func([IDL.Text], [IDL.Opt(UserPublic)], ['query']),
-  'initAdmin' : IDL.Func(
-      [],
-      [IDL.Variant({ 'ok' : IDL.Null, 'err' : IDL.Text })],
-      [],
-    ),
   'loginUser' : IDL.Func(
       [IDL.Text, IDL.Text],
       [
@@ -262,37 +262,37 @@ export const idlService = IDL.Service({
       [],
     ),
   'markNotificationRead' : IDL.Func(
-      [IDL.Nat],
+      [UserId, IDL.Nat],
       [IDL.Variant({ 'ok' : IDL.Null, 'err' : IDL.Text })],
       [],
     ),
   'purchasePlan' : IDL.Func(
-      [IDL.Nat, IDL.Text, IDL.Opt(IDL.Text)],
+      [UserId, IDL.Nat, IDL.Text, IDL.Opt(IDL.Text)],
       [IDL.Variant({ 'ok' : OrderPublic, 'err' : IDL.Text })],
       [],
     ),
   'registerUser' : IDL.Func(
-      [IDL.Text, IDL.Text, IDL.Text, IDL.Opt(IDL.Text)],
+      [IDL.Text, IDL.Text, IDL.Text, IDL.Opt(IDL.Text), IDL.Opt(IDL.Text)],
       [IDL.Variant({ 'ok' : UserPublic, 'err' : IDL.Text })],
       [],
     ),
   'requestWithdrawal' : IDL.Func(
-      [IDL.Nat],
+      [UserId, IDL.Nat],
       [IDL.Variant({ 'ok' : WithdrawRequestPublic, 'err' : IDL.Text })],
       [],
     ),
   'resetUserPassword' : IDL.Func(
-      [UserId, IDL.Text],
+      [IDL.Text, IDL.Text, UserId, IDL.Text],
       [IDL.Variant({ 'ok' : IDL.Null, 'err' : IDL.Text })],
       [],
     ),
   'savePaymentDetails' : IDL.Func(
-      [IDL.Opt(BankDetails), IDL.Opt(IDL.Text)],
+      [UserId, IDL.Opt(BankDetails), IDL.Opt(IDL.Text)],
       [IDL.Variant({ 'ok' : IDL.Null, 'err' : IDL.Text })],
       [],
     ),
   'setUserStatus' : IDL.Func(
-      [UserId, UserStatus],
+      [IDL.Text, IDL.Text, UserId, UserStatus],
       [IDL.Variant({ 'ok' : IDL.Null, 'err' : IDL.Text })],
       [],
     ),
@@ -315,7 +315,7 @@ export const idlFactory = ({ IDL }) => {
     'rejected' : IDL.Null,
   });
   const Timestamp = IDL.Int;
-  const UserId = IDL.Principal;
+  const UserId = IDL.Text;
   const OrderPublic = IDL.Record({
     'id' : IDL.Nat,
     'status' : OrderStatus,
@@ -348,6 +348,7 @@ export const idlFactory = ({ IDL }) => {
     'leftChild' : IDL.Opt(UserId),
     'mobileNumber' : IDL.Text,
     'isAdmin' : IDL.Bool,
+    'position' : IDL.Text,
     'pairIncome' : IDL.Nat,
     'walletBalance' : IDL.Nat,
   });
@@ -418,69 +419,69 @@ export const idlFactory = ({ IDL }) => {
   
   return IDL.Service({
     'adminAddProduct' : IDL.Func(
-        [IDL.Text, IDL.Nat, IDL.Opt(IDL.Text)],
+        [IDL.Text, IDL.Text, IDL.Text, IDL.Nat, IDL.Opt(IDL.Text)],
         [IDL.Variant({ 'ok' : ProductPublic, 'err' : IDL.Text })],
         [],
       ),
     'adminApproveOrder' : IDL.Func(
-        [IDL.Nat],
+        [IDL.Text, IDL.Text, IDL.Nat],
         [IDL.Variant({ 'ok' : IDL.Null, 'err' : IDL.Text })],
         [],
       ),
     'adminApproveWithdrawal' : IDL.Func(
-        [IDL.Nat],
+        [IDL.Text, IDL.Text, IDL.Nat],
         [IDL.Variant({ 'ok' : IDL.Null, 'err' : IDL.Text })],
         [],
       ),
     'adminDeleteProduct' : IDL.Func(
-        [IDL.Nat],
+        [IDL.Text, IDL.Text, IDL.Nat],
         [IDL.Variant({ 'ok' : IDL.Null, 'err' : IDL.Text })],
         [],
       ),
     'adminGetAllOrders' : IDL.Func(
-        [],
+        [IDL.Text, IDL.Text],
         [IDL.Variant({ 'ok' : IDL.Vec(OrderPublic), 'err' : IDL.Text })],
-        ['query'],
+        [],
       ),
     'adminGetAllUsers' : IDL.Func(
-        [],
+        [IDL.Text, IDL.Text],
         [IDL.Variant({ 'ok' : IDL.Vec(UserPublic), 'err' : IDL.Text })],
-        ['query'],
+        [],
       ),
     'adminGetAllWithdrawals' : IDL.Func(
-        [],
+        [IDL.Text, IDL.Text],
         [
           IDL.Variant({
             'ok' : IDL.Vec(WithdrawRequestPublic),
             'err' : IDL.Text,
           }),
         ],
-        ['query'],
+        [],
       ),
     'adminGetAuditLog' : IDL.Func(
-        [],
+        [IDL.Text, IDL.Text],
         [IDL.Variant({ 'ok' : IDL.Vec(AuditLog), 'err' : IDL.Text })],
-        ['query'],
+        [],
       ),
     'adminGetNotificationHistory' : IDL.Func(
-        [],
+        [IDL.Text, IDL.Text],
         [IDL.Variant({ 'ok' : IDL.Vec(NotificationPublic), 'err' : IDL.Text })],
-        ['query'],
+        [],
       ),
     'adminGetPendingOrders' : IDL.Func(
-        [],
+        [IDL.Text, IDL.Text],
         [IDL.Variant({ 'ok' : IDL.Vec(OrderPublic), 'err' : IDL.Text })],
-        ['query'],
+        [],
       ),
     'adminGetProducts' : IDL.Func(
-        [],
+        [IDL.Text, IDL.Text],
         [IDL.Variant({ 'ok' : IDL.Vec(ProductPublic), 'err' : IDL.Text })],
-        ['query'],
+        [],
       ),
     'adminGetStats' : IDL.Func(
-        [],
+        [IDL.Text, IDL.Text],
         [IDL.Variant({ 'ok' : AdminStats, 'err' : IDL.Text })],
-        ['query'],
+        [],
       ),
     'adminLogin' : IDL.Func(
         [IDL.Text, IDL.Text],
@@ -488,66 +489,61 @@ export const idlFactory = ({ IDL }) => {
         [],
       ),
     'adminRejectOrder' : IDL.Func(
-        [IDL.Nat, IDL.Text],
+        [IDL.Text, IDL.Text, IDL.Nat, IDL.Text],
         [IDL.Variant({ 'ok' : IDL.Null, 'err' : IDL.Text })],
         [],
       ),
     'adminRejectWithdrawal' : IDL.Func(
-        [IDL.Nat],
+        [IDL.Text, IDL.Text, IDL.Nat],
         [IDL.Variant({ 'ok' : IDL.Null, 'err' : IDL.Text })],
         [],
       ),
     'adminSendNotification' : IDL.Func(
-        [IDL.Opt(UserId), IDL.Text],
+        [IDL.Text, IDL.Text, IDL.Opt(UserId), IDL.Text],
         [IDL.Variant({ 'ok' : IDL.Null, 'err' : IDL.Text })],
         [],
       ),
     'adminUpdateProduct' : IDL.Func(
-        [IDL.Nat, IDL.Text, IDL.Nat, IDL.Opt(IDL.Text)],
+        [IDL.Text, IDL.Text, IDL.Nat, IDL.Text, IDL.Nat, IDL.Opt(IDL.Text)],
         [IDL.Variant({ 'ok' : IDL.Null, 'err' : IDL.Text })],
         [],
       ),
-    'getDirectDownline' : IDL.Func([], [IDL.Vec(UserPublic)], ['query']),
+    'getDirectDownline' : IDL.Func([UserId], [IDL.Vec(UserPublic)], ['query']),
     'getDownlineTree' : IDL.Func(
-        [],
+        [UserId],
         [IDL.Variant({ 'ok' : TreeNode, 'err' : IDL.Text })],
         ['query'],
       ),
     'getMyNotifications' : IDL.Func(
-        [],
+        [UserId],
         [IDL.Vec(NotificationPublic)],
         ['query'],
       ),
-    'getMyOrders' : IDL.Func([], [IDL.Vec(OrderPublic)], ['query']),
+    'getMyOrders' : IDL.Func([UserId], [IDL.Vec(OrderPublic)], ['query']),
     'getMyPaymentDetails' : IDL.Func(
-        [],
+        [UserId],
         [IDL.Variant({ 'ok' : PaymentDetails, 'err' : IDL.Text })],
         ['query'],
       ),
     'getMyProfile' : IDL.Func(
-        [],
+        [UserId],
         [IDL.Variant({ 'ok' : UserPublic, 'err' : IDL.Text })],
         ['query'],
       ),
-    'getMyReferralCode' : IDL.Func([], [IDL.Text], ['query']),
+    'getMyReferralCode' : IDL.Func([UserId], [IDL.Text], ['query']),
     'getMyWallet' : IDL.Func(
-        [],
+        [UserId],
         [IDL.Variant({ 'ok' : WalletInfo, 'err' : IDL.Text })],
         ['query'],
       ),
     'getMyWithdrawals' : IDL.Func(
-        [],
+        [UserId],
         [IDL.Vec(WithdrawRequestPublic)],
         ['query'],
       ),
     'getPlans' : IDL.Func([], [IDL.Vec(Plan)], ['query']),
     'getProducts' : IDL.Func([], [IDL.Vec(ProductPublic)], ['query']),
     'getUserByMobile' : IDL.Func([IDL.Text], [IDL.Opt(UserPublic)], ['query']),
-    'initAdmin' : IDL.Func(
-        [],
-        [IDL.Variant({ 'ok' : IDL.Null, 'err' : IDL.Text })],
-        [],
-      ),
     'loginUser' : IDL.Func(
         [IDL.Text, IDL.Text],
         [
@@ -559,37 +555,37 @@ export const idlFactory = ({ IDL }) => {
         [],
       ),
     'markNotificationRead' : IDL.Func(
-        [IDL.Nat],
+        [UserId, IDL.Nat],
         [IDL.Variant({ 'ok' : IDL.Null, 'err' : IDL.Text })],
         [],
       ),
     'purchasePlan' : IDL.Func(
-        [IDL.Nat, IDL.Text, IDL.Opt(IDL.Text)],
+        [UserId, IDL.Nat, IDL.Text, IDL.Opt(IDL.Text)],
         [IDL.Variant({ 'ok' : OrderPublic, 'err' : IDL.Text })],
         [],
       ),
     'registerUser' : IDL.Func(
-        [IDL.Text, IDL.Text, IDL.Text, IDL.Opt(IDL.Text)],
+        [IDL.Text, IDL.Text, IDL.Text, IDL.Opt(IDL.Text), IDL.Opt(IDL.Text)],
         [IDL.Variant({ 'ok' : UserPublic, 'err' : IDL.Text })],
         [],
       ),
     'requestWithdrawal' : IDL.Func(
-        [IDL.Nat],
+        [UserId, IDL.Nat],
         [IDL.Variant({ 'ok' : WithdrawRequestPublic, 'err' : IDL.Text })],
         [],
       ),
     'resetUserPassword' : IDL.Func(
-        [UserId, IDL.Text],
+        [IDL.Text, IDL.Text, UserId, IDL.Text],
         [IDL.Variant({ 'ok' : IDL.Null, 'err' : IDL.Text })],
         [],
       ),
     'savePaymentDetails' : IDL.Func(
-        [IDL.Opt(BankDetails), IDL.Opt(IDL.Text)],
+        [UserId, IDL.Opt(BankDetails), IDL.Opt(IDL.Text)],
         [IDL.Variant({ 'ok' : IDL.Null, 'err' : IDL.Text })],
         [],
       ),
     'setUserStatus' : IDL.Func(
-        [UserId, UserStatus],
+        [IDL.Text, IDL.Text, UserId, UserStatus],
         [IDL.Variant({ 'ok' : IDL.Null, 'err' : IDL.Text })],
         [],
       ),

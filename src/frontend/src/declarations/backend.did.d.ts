@@ -70,7 +70,7 @@ export interface TreeNode {
   'user' : UserId,
   'children' : Array<TreeNode>,
 }
-export type UserId = Principal;
+export type UserId = string;
 export interface UserPublic {
   'id' : UserId,
   'status' : UserStatus,
@@ -87,6 +87,7 @@ export interface UserPublic {
   'leftChild' : [] | [UserId],
   'mobileNumber' : string,
   'isAdmin' : boolean,
+  'position' : string,
   'pairIncome' : bigint,
   'walletBalance' : bigint,
 }
@@ -113,143 +114,155 @@ export type WithdrawStatus = { 'pending' : null } |
   { 'rejected' : null };
 export interface _SERVICE {
   'adminAddProduct' : ActorMethod<
-    [string, bigint, [] | [string]],
+    [string, string, string, bigint, [] | [string]],
     { 'ok' : ProductPublic } |
       { 'err' : string }
   >,
   'adminApproveOrder' : ActorMethod<
-    [bigint],
+    [string, string, bigint],
     { 'ok' : null } |
       { 'err' : string }
   >,
   'adminApproveWithdrawal' : ActorMethod<
-    [bigint],
+    [string, string, bigint],
     { 'ok' : null } |
       { 'err' : string }
   >,
   'adminDeleteProduct' : ActorMethod<
-    [bigint],
+    [string, string, bigint],
     { 'ok' : null } |
       { 'err' : string }
   >,
   'adminGetAllOrders' : ActorMethod<
-    [],
+    [string, string],
     { 'ok' : Array<OrderPublic> } |
       { 'err' : string }
   >,
   'adminGetAllUsers' : ActorMethod<
-    [],
+    [string, string],
     { 'ok' : Array<UserPublic> } |
       { 'err' : string }
   >,
   'adminGetAllWithdrawals' : ActorMethod<
-    [],
+    [string, string],
     { 'ok' : Array<WithdrawRequestPublic> } |
       { 'err' : string }
   >,
   'adminGetAuditLog' : ActorMethod<
-    [],
+    [string, string],
     { 'ok' : Array<AuditLog> } |
       { 'err' : string }
   >,
   'adminGetNotificationHistory' : ActorMethod<
-    [],
+    [string, string],
     { 'ok' : Array<NotificationPublic> } |
       { 'err' : string }
   >,
   'adminGetPendingOrders' : ActorMethod<
-    [],
+    [string, string],
     { 'ok' : Array<OrderPublic> } |
       { 'err' : string }
   >,
   'adminGetProducts' : ActorMethod<
-    [],
+    [string, string],
     { 'ok' : Array<ProductPublic> } |
       { 'err' : string }
   >,
-  'adminGetStats' : ActorMethod<[], { 'ok' : AdminStats } | { 'err' : string }>,
+  'adminGetStats' : ActorMethod<
+    [string, string],
+    { 'ok' : AdminStats } |
+      { 'err' : string }
+  >,
   'adminLogin' : ActorMethod<
     [string, string],
     { 'ok' : null } |
       { 'err' : string }
   >,
   'adminRejectOrder' : ActorMethod<
-    [bigint, string],
+    [string, string, bigint, string],
     { 'ok' : null } |
       { 'err' : string }
   >,
   'adminRejectWithdrawal' : ActorMethod<
-    [bigint],
+    [string, string, bigint],
     { 'ok' : null } |
       { 'err' : string }
   >,
   'adminSendNotification' : ActorMethod<
-    [[] | [UserId], string],
+    [string, string, [] | [UserId], string],
     { 'ok' : null } |
       { 'err' : string }
   >,
   'adminUpdateProduct' : ActorMethod<
-    [bigint, string, bigint, [] | [string]],
+    [string, string, bigint, string, bigint, [] | [string]],
     { 'ok' : null } |
       { 'err' : string }
   >,
-  'getDirectDownline' : ActorMethod<[], Array<UserPublic>>,
-  'getDownlineTree' : ActorMethod<[], { 'ok' : TreeNode } | { 'err' : string }>,
-  'getMyNotifications' : ActorMethod<[], Array<NotificationPublic>>,
-  'getMyOrders' : ActorMethod<[], Array<OrderPublic>>,
+  'getDirectDownline' : ActorMethod<[UserId], Array<UserPublic>>,
+  'getDownlineTree' : ActorMethod<
+    [UserId],
+    { 'ok' : TreeNode } |
+      { 'err' : string }
+  >,
+  'getMyNotifications' : ActorMethod<[UserId], Array<NotificationPublic>>,
+  'getMyOrders' : ActorMethod<[UserId], Array<OrderPublic>>,
   'getMyPaymentDetails' : ActorMethod<
-    [],
+    [UserId],
     { 'ok' : PaymentDetails } |
       { 'err' : string }
   >,
-  'getMyProfile' : ActorMethod<[], { 'ok' : UserPublic } | { 'err' : string }>,
-  'getMyReferralCode' : ActorMethod<[], string>,
-  'getMyWallet' : ActorMethod<[], { 'ok' : WalletInfo } | { 'err' : string }>,
-  'getMyWithdrawals' : ActorMethod<[], Array<WithdrawRequestPublic>>,
+  'getMyProfile' : ActorMethod<
+    [UserId],
+    { 'ok' : UserPublic } |
+      { 'err' : string }
+  >,
+  'getMyReferralCode' : ActorMethod<[UserId], string>,
+  'getMyWallet' : ActorMethod<
+    [UserId],
+    { 'ok' : WalletInfo } |
+      { 'err' : string }
+  >,
+  'getMyWithdrawals' : ActorMethod<[UserId], Array<WithdrawRequestPublic>>,
   'getPlans' : ActorMethod<[], Array<Plan>>,
   'getProducts' : ActorMethod<[], Array<ProductPublic>>,
   'getUserByMobile' : ActorMethod<[string], [] | [UserPublic]>,
-  /**
-   * / Make the caller an admin if no admin exists yet.
-   */
-  'initAdmin' : ActorMethod<[], { 'ok' : null } | { 'err' : string }>,
   'loginUser' : ActorMethod<
     [string, string],
     { 'ok' : { 'userId' : UserId, 'profile' : UserPublic } } |
       { 'err' : string }
   >,
   'markNotificationRead' : ActorMethod<
-    [bigint],
+    [UserId, bigint],
     { 'ok' : null } |
       { 'err' : string }
   >,
   'purchasePlan' : ActorMethod<
-    [bigint, string, [] | [string]],
+    [UserId, bigint, string, [] | [string]],
     { 'ok' : OrderPublic } |
       { 'err' : string }
   >,
   'registerUser' : ActorMethod<
-    [string, string, string, [] | [string]],
+    [string, string, string, [] | [string], [] | [string]],
     { 'ok' : UserPublic } |
       { 'err' : string }
   >,
   'requestWithdrawal' : ActorMethod<
-    [bigint],
+    [UserId, bigint],
     { 'ok' : WithdrawRequestPublic } |
       { 'err' : string }
   >,
   'resetUserPassword' : ActorMethod<
-    [UserId, string],
+    [string, string, UserId, string],
     { 'ok' : null } |
       { 'err' : string }
   >,
   'savePaymentDetails' : ActorMethod<
-    [[] | [BankDetails], [] | [string]],
+    [UserId, [] | [BankDetails], [] | [string]],
     { 'ok' : null } |
       { 'err' : string }
   >,
   'setUserStatus' : ActorMethod<
-    [UserId, UserStatus],
+    [string, string, UserId, UserStatus],
     { 'ok' : null } |
       { 'err' : string }
   >,

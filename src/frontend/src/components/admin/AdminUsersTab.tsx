@@ -140,19 +140,17 @@ export default function AdminUsersTab() {
           ) : filtered.length > 0 ? (
             <div className="divide-y divide-border/50">
               {filtered.map((user) => {
-                const isExpanded = expandedId === user.id.toText();
+                const isExpanded = expandedId === user.id;
                 return (
                   <div
-                    key={user.id.toText()}
-                    data-ocid={`admin-user-${user.id.toText().slice(0, 8)}`}
+                    key={user.id}
+                    data-ocid={`admin-user-${user.id.slice(0, 8)}`}
                   >
                     {/* Row */}
                     <button
                       type="button"
                       className="w-full flex items-center gap-3 px-4 py-3 hover:bg-muted/20 transition-colors cursor-pointer text-left"
-                      onClick={() =>
-                        setExpandedId(isExpanded ? null : user.id.toText())
-                      }
+                      onClick={() => setExpandedId(isExpanded ? null : user.id)}
                     >
                       {/* Avatar */}
                       <div className="w-9 h-9 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center flex-shrink-0">
@@ -257,7 +255,7 @@ export default function AdminUsersTab() {
                                 status: UserStatus.active,
                               })
                             }
-                            data-ocid={`admin-activate-${user.id.toText().slice(0, 8)}`}
+                            data-ocid={`admin-activate-${user.id.slice(0, 8)}`}
                           >
                             Activate
                           </Button>
@@ -275,7 +273,7 @@ export default function AdminUsersTab() {
                                 status: UserStatus.inactive,
                               })
                             }
-                            data-ocid={`admin-deactivate-${user.id.toText().slice(0, 8)}`}
+                            data-ocid={`admin-deactivate-${user.id.slice(0, 8)}`}
                           >
                             Deactivate
                           </Button>
@@ -292,7 +290,7 @@ export default function AdminUsersTab() {
                                 status: UserStatus.hold,
                               })
                             }
-                            data-ocid={`admin-hold-${user.id.toText().slice(0, 8)}`}
+                            data-ocid={`admin-hold-${user.id.slice(0, 8)}`}
                           >
                             Hold
                           </Button>
@@ -304,7 +302,7 @@ export default function AdminUsersTab() {
                               setResetDialog(user);
                               setNewPassword("");
                             }}
-                            data-ocid={`admin-reset-pwd-${user.id.toText().slice(0, 8)}`}
+                            data-ocid={`admin-reset-pwd-${user.id.slice(0, 8)}`}
                           >
                             <KeyRound className="h-3 w-3" />
                             Reset Password

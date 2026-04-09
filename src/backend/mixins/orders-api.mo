@@ -1,7 +1,6 @@
 import Map "mo:core/Map";
 import List "mo:core/List";
 import Time "mo:core/Time";
-import Principal "mo:core/Principal";
 import UserTypes "../types/users";
 import OrderTypes "../types/orders";
 import PlanTypes "../types/plans";
@@ -24,6 +23,13 @@ mixin (
   nextNotificationId : Nat,
   nextAuditId : Nat,
 ) {
+  let ORDERS_ADMIN_ID : Text = "6305462887";
+  let ORDERS_ADMIN_PASSWORD : Text = "guccora@8433";
+
+  func isOrdersAdmin(adminId : Text, password : Text) : Bool {
+    adminId == ORDERS_ADMIN_ID and password == ORDERS_ADMIN_PASSWORD;
+  };
+
   func getProductById(productId : Nat) : ?PlanTypes.Product {
     products.find(func(p : PlanTypes.Product) : Bool { p.id == productId and p.isActive });
   };
@@ -52,16 +58,18 @@ mixin (
 
   /// Purchase a product — creates order with #pendingApproval status.
   /// Commissions are NOT distributed until admin approves the order.
-  public shared ({ caller }) func purchasePlan(
+  /// userId is the mobile number (received from login).
+  public shared func purchasePlan(
+    userId : UserTypes.UserId,
     productId : Nat,
     deliveryAddress : Text,
     utrScreenshotUrl : ?Text,
   ) : async { #ok : OrderTypes.OrderPublic; #err : Text } {
-    if (caller.isAnonymous()) return #err("Anonymous caller not allowed");
-    if (not users.containsKey(caller)) return #err("User not registered");
+    if (userId.size() == 0) return #err("User ID is required");
+    if (not users.containsKey(userId)) return #err("User not registered");
     if (deliveryAddress.size() == 0) return #err("Delivery address is required");
 
-    switch (users.get(caller)) {
+    switch (users.get(userId)) {
       case null { #err("User not found") };
       case (?user) {
         if (user.status == #inactive) return #err("Account is inactive");
@@ -71,7 +79,7 @@ mixin (
             let orderId = orders.size() + 1;
             let order : OrderTypes.Order = {
               id = orderId;
-              buyer = caller;
+              buyer = userId;
               planId = productId;
               planPrice = product.price;
               timestamp = Time.now();
@@ -99,13 +107,8 @@ mixin (
   };
 
   /// Admin approves an order — records revenue, distributes commissions
-  public shared ({ caller }) func adminApproveOrder(orderId : Nat) : async { #ok : (); #err : Text } {
-    // Check admin
-    let isAdmin = switch (users.get(caller)) {
-      case (?u) u.isAdmin;
-      case null false;
-    };
-    if (not isAdmin) return #err("Unauthorized");
+  public shared func adminApproveOrder(adminId : Text, password : Text, orderId : Nat) : async { #ok : (); #err : Text } {
+    if (not isOrdersAdmin(adminId, password)) return #err("Unauthorized");
 
     let orderOpt = orders.find(func(o : OrderTypes.Order) : Bool { o.id == orderId });
     switch (orderOpt) {
@@ -142,12 +145,8 @@ mixin (
   };
 
   /// Admin rejects an order
-  public shared ({ caller }) func adminRejectOrder(orderId : Nat, reason : Text) : async { #ok : (); #err : Text } {
-    let isAdmin = switch (users.get(caller)) {
-      case (?u) u.isAdmin;
-      case null false;
-    };
-    if (not isAdmin) return #err("Unauthorized");
+  public shared func adminRejectOrder(adminId : Text, password : Text, orderId : Nat, reason : Text) : async { #ok : (); #err : Text } {
+    if (not isOrdersAdmin(adminId, password)) return #err("Unauthorized");
 
     let orderOpt = orders.find(func(o : OrderTypes.Order) : Bool { o.id == orderId });
     switch (orderOpt) {
@@ -163,10 +162,10 @@ mixin (
     };
   };
 
-  /// Get all orders for the caller
-  public shared query ({ caller }) func getMyOrders() : async [OrderTypes.OrderPublic] {
+  /// Get all orders for a userId (mobile number)
+  public query func getMyOrders(userId : UserTypes.UserId) : async [OrderTypes.OrderPublic] {
     orders
-      .filter(func(o : OrderTypes.Order) : Bool { Principal.equal(o.buyer, caller) })
+      .filter(func(o : OrderTypes.Order) : Bool { o.buyer == userId })
       .map<OrderTypes.Order, OrderTypes.OrderPublic>(func(o : OrderTypes.Order) : OrderTypes.OrderPublic {
         {
           id = o.id;
@@ -184,12 +183,8 @@ mixin (
   };
 
   /// Get all orders with pending approval status (admin only)
-  public shared query ({ caller }) func adminGetPendingOrders() : async { #ok : [OrderTypes.OrderPublic]; #err : Text } {
-    let isAdmin = switch (users.get(caller)) {
-      case (?u) u.isAdmin;
-      case null false;
-    };
-    if (not isAdmin) return #err("Unauthorized");
+  public shared func adminGetPendingOrders(adminId : Text, password : Text) : async { #ok : [OrderTypes.OrderPublic]; #err : Text } {
+    if (not isOrdersAdmin(adminId, password)) return #err("Unauthorized");
     let result = orders
       .filter(func(o : OrderTypes.Order) : Bool { o.status == #pendingApproval })
       .map<OrderTypes.Order, OrderTypes.OrderPublic>(func(o : OrderTypes.Order) : OrderTypes.OrderPublic {

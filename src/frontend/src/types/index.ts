@@ -1,4 +1,3 @@
-import type { Principal } from "@icp-sdk/core/principal";
 export {
   OrderStatus,
   UserStatus,
@@ -21,7 +20,8 @@ import type {
   WithdrawStatus as BackendWithdrawStatus,
 } from "../backend";
 
-export type UserId = Principal;
+// UserId is now a plain string (mobile number)
+export type UserId = string;
 export type Timestamp = bigint;
 
 // Re-export backend types as canonical frontend types
@@ -53,4 +53,7 @@ export interface Plan {
 export interface StoredAuth {
   userId: string | null;
   isAdmin: boolean;
+  adminId: string | null;
+  adminPassword: string | null;
+  role: "user" | "admin" | null;
 }

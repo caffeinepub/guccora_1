@@ -1,6 +1,17 @@
 import { useActor } from "@caffeineai/core-infrastructure";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  query,
+  setDoc,
+  updateDoc,
+  where,
+} from "firebase/firestore";
 import { createActor } from "../backend";
+import { db } from "../lib/firebase";
 import type {
   AdminStats,
   AuditLog,
@@ -11,20 +22,20 @@ import type {
   Product,
   TreeNode,
   User,
+  UserId,
+  UserStatus,
   WalletInfo,
   WithdrawRequest,
 } from "../types";
-import type { UserId } from "../types";
-import type { UserStatus } from "../types";
+import { useAuth } from "./useAuth";
 
 function useBackendActor() {
   return useActor(createActor);
 }
 
-// ─── Auth Mutations ──────────────────────────────────────────────────────────
+// ─── Auth Mutations (Firestore-based) ────────────────────────────────────────
 
 export function useLoginUser() {
-  const { actor } = useBackendActor();
   return useMutation({
     mutationFn: async ({
       mobile,
@@ -33,43 +44,146 @@ export function useLoginUser() {
       mobile: string;
       password: string;
     }) => {
-      if (!actor) throw new Error("Not connected");
-      const result = await actor.loginUser(mobile, password);
-      if (result.__kind__ === "err") throw new Error(result.err);
-      return result.ok;
+      // Admin hardcoded credentials
+      if (mobile === "6305462887" && password === "guccora@8433") {
+        return { userId: mobile, role: "admin" as const };
+      }
+
+      // First try direct document lookup by mobile (document ID = mobile number)
+      const userDocRef = doc(db, "users", mobile);
+      const directSnapshot = await getDoc(userDocRef);
+
+      if (directSnapshot.exists()) {
+        const userData = directSnapshot.data();
+        if (userData.password !== password) {
+          throw new Error("Invalid mobile or password");
+        }
+
+        // Auto-populate any missing required fields
+        const missingFields: Record<string, unknown> = {};
+        if (!userData.wallet) {
+          missingFields.wallet = { direct: 0, level: 0, pair: 0, total: 0 };
+        }
+        if (!userData.role) {
+          missingFields.role = "user";
+        }
+        if (!userData.status) {
+          missingFields.status = "active";
+        }
+        if (Object.keys(missingFields).length > 0) {
+          await updateDoc(userDocRef, missingFields);
+        }
+
+        return {
+          userId: mobile,
+          role: (userData.role ?? "user") as "user" | "admin",
+        };
+      }
+
+      // Fallback: query by mobile field (for documents created with addDoc / random ID)
+      const usersRef = collection(db, "users");
+      const q = query(usersRef, where("mobile", "==", mobile));
+      const snapshot = await getDocs(q);
+
+      if (snapshot.empty) {
+        throw new Error("Invalid mobile or password");
+      }
+
+      const fallbackDoc = snapshot.docs[0];
+      const userData = fallbackDoc.data();
+
+      if (userData.password !== password) {
+        throw new Error("Invalid mobile or password");
+      }
+
+      // Auto-populate any missing required fields
+      const missingFields: Record<string, unknown> = {};
+      if (!userData.wallet) {
+        missingFields.wallet = { direct: 0, level: 0, pair: 0, total: 0 };
+      }
+      if (!userData.role) {
+        missingFields.role = "user";
+      }
+      if (!userData.status) {
+        missingFields.status = "active";
+      }
+      if (Object.keys(missingFields).length > 0) {
+        await updateDoc(fallbackDoc.ref, missingFields);
+      }
+
+      return {
+        userId: mobile,
+        role: (userData.role ?? "user") as "user" | "admin",
+      };
     },
   });
 }
 
 export function useRegisterUser() {
-  const { actor } = useBackendActor();
   return useMutation({
     mutationFn: async ({
       name,
       mobile,
       password,
       referralCode,
+      position,
     }: {
       name: string;
       mobile: string;
       password: string;
       referralCode: string | null;
+      position?: "left" | "right";
     }) => {
-      if (!actor) throw new Error("Not connected");
-      const result = await actor.registerUser(
+      // Check if mobile already exists — direct doc lookup (O(1), avoids query)
+      const userDocRef = doc(db, "users", mobile);
+      const existingDoc = await getDoc(userDocRef);
+      if (existingDoc.exists()) {
+        throw new Error("User already exists");
+      }
+
+      // Fallback check via query for any legacy documents with random IDs
+      const usersRef = collection(db, "users");
+      const q = query(usersRef, where("mobile", "==", mobile));
+      const snapshot = await getDocs(q);
+      if (!snapshot.empty) {
+        throw new Error("User already exists");
+      }
+
+      // Save user to Firestore with mobile as the document ID
+      const newUser = {
         name,
         mobile,
         password,
-        referralCode,
-      );
-      if (result.__kind__ === "err") throw new Error(result.err);
-      return result.ok as User;
+        role: "user",
+        createdAt: new Date().toISOString(),
+        referralCode: referralCode ?? "",
+        position: position ?? "left",
+        sponsorId: referralCode ?? "",
+        wallet: { direct: 0, level: 0, pair: 0, total: 0 },
+        status: "active",
+      };
+
+      // setDoc with mobile as document ID ensures consistent lookups
+      await setDoc(userDocRef, newUser);
+
+      // Return a User-compatible object
+      return {
+        id: mobile,
+        name,
+        mobile,
+        role: "user",
+        createdAt: newUser.createdAt,
+        referralCode: referralCode ?? "",
+        position: position ?? "left",
+        sponsorId: referralCode ?? "",
+        wallet: { direct: 0n, level: 0n, pair: 0n, total: 0n },
+        status: { __kind__: "active" },
+      } as unknown as User;
     },
   });
 }
 
 export function useAdminLogin() {
-  const { actor } = useBackendActor();
   return useMutation({
     mutationFn: async ({
       adminId,
@@ -78,10 +192,11 @@ export function useAdminLogin() {
       adminId: string;
       password: string;
     }) => {
-      if (!actor) throw new Error("Not connected");
-      const result = await actor.adminLogin(adminId, password);
-      if (result.__kind__ === "err") throw new Error(result.err);
-      return result.ok;
+      // Hardcoded admin credentials
+      if (adminId === "6305462887" && password === "guccora@8433") {
+        return { adminId, role: "admin" as const };
+      }
+      throw new Error("Invalid admin credentials");
     },
   });
 }
@@ -89,68 +204,96 @@ export function useAdminLogin() {
 // ─── User Profile Queries ────────────────────────────────────────────────────
 
 export function useMyProfile() {
-  const { actor, isFetching } = useBackendActor();
+  const { userId } = useAuth();
   return useQuery<User | null>({
-    queryKey: ["myProfile"],
+    queryKey: ["myProfile", userId],
     queryFn: async () => {
-      if (!actor) return null;
-      const result = await actor.getMyProfile();
-      if (result.__kind__ === "ok") return result.ok as User;
-      return null;
+      if (!userId) return null;
+      // Fetch directly from Firestore — document ID is the mobile number
+      const userDocRef = doc(db, "users", userId);
+      const snapshot = await getDoc(userDocRef);
+      if (!snapshot.exists()) return null;
+      const data = snapshot.data();
+      // Map Firestore fields to the User shape used across the app
+      return {
+        id: userId,
+        name: data.name ?? "",
+        mobile: data.mobile ?? userId,
+        role: data.role ?? "user",
+        createdAt: data.createdAt ?? "",
+        referralCode: data.referralCode ?? "",
+        position: data.position ?? "left",
+        sponsorId: data.sponsorId ?? "",
+        wallet: data.wallet
+          ? {
+              direct: BigInt(Math.round((data.wallet.direct ?? 0) * 100)),
+              level: BigInt(Math.round((data.wallet.level ?? 0) * 100)),
+              pair: BigInt(Math.round((data.wallet.pair ?? 0) * 100)),
+              total: BigInt(Math.round((data.wallet.total ?? 0) * 100)),
+            }
+          : { direct: 0n, level: 0n, pair: 0n, total: 0n },
+        status: { __kind__: data.status ?? "active" },
+        // Convenience flag: profile is complete if the document exists
+        isProfileComplete: true,
+      } as unknown as User;
     },
-    enabled: !!actor && !isFetching,
+    enabled: !!userId,
   });
 }
 
 export function useMyWallet() {
   const { actor, isFetching } = useBackendActor();
+  const { userId } = useAuth();
   return useQuery<WalletInfo | null>({
-    queryKey: ["myWallet"],
+    queryKey: ["myWallet", userId],
     queryFn: async () => {
-      if (!actor) return null;
-      const result = await actor.getMyWallet();
+      if (!actor || !userId) return null;
+      const result = await actor.getMyWallet(userId);
       if (result.__kind__ === "ok") return result.ok as WalletInfo;
       return null;
     },
-    enabled: !!actor && !isFetching,
+    enabled: !!actor && !isFetching && !!userId,
   });
 }
 
 export function useMyReferralCode() {
   const { actor, isFetching } = useBackendActor();
+  const { userId } = useAuth();
   return useQuery<string>({
-    queryKey: ["myReferralCode"],
+    queryKey: ["myReferralCode", userId],
     queryFn: async () => {
-      if (!actor) return "";
-      return actor.getMyReferralCode();
+      if (!actor || !userId) return "";
+      return actor.getMyReferralCode(userId);
     },
-    enabled: !!actor && !isFetching,
+    enabled: !!actor && !isFetching && !!userId,
   });
 }
 
 export function useDownlineTree() {
   const { actor, isFetching } = useBackendActor();
+  const { userId } = useAuth();
   return useQuery<TreeNode | null>({
-    queryKey: ["downlineTree"],
+    queryKey: ["downlineTree", userId],
     queryFn: async () => {
-      if (!actor) return null;
-      const result = await actor.getDownlineTree();
+      if (!actor || !userId) return null;
+      const result = await actor.getDownlineTree(userId);
       if (result.__kind__ === "ok") return result.ok as TreeNode;
       return null;
     },
-    enabled: !!actor && !isFetching,
+    enabled: !!actor && !isFetching && !!userId,
   });
 }
 
 export function useDirectDownline() {
   const { actor, isFetching } = useBackendActor();
+  const { userId } = useAuth();
   return useQuery<User[]>({
-    queryKey: ["directDownline"],
+    queryKey: ["directDownline", userId],
     queryFn: async () => {
-      if (!actor) return [];
-      return actor.getDirectDownline() as Promise<User[]>;
+      if (!actor || !userId) return [];
+      return actor.getDirectDownline(userId) as Promise<User[]>;
     },
-    enabled: !!actor && !isFetching,
+    enabled: !!actor && !isFetching && !!userId,
   });
 }
 
@@ -170,20 +313,22 @@ export function useGetProducts() {
 
 export function useAdminGetProducts() {
   const { actor, isFetching } = useBackendActor();
+  const { adminId, adminPassword } = useAuth();
   return useQuery<Product[]>({
     queryKey: ["adminProducts"],
     queryFn: async () => {
-      if (!actor) return [];
-      const result = await actor.adminGetProducts();
+      if (!actor || !adminId || !adminPassword) return [];
+      const result = await actor.adminGetProducts(adminId, adminPassword);
       if (result.__kind__ === "ok") return result.ok as Product[];
       return [];
     },
-    enabled: !!actor && !isFetching,
+    enabled: !!actor && !isFetching && !!adminId,
   });
 }
 
 export function useAdminAddProduct() {
   const { actor } = useBackendActor();
+  const { adminId, adminPassword } = useAuth();
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async ({
@@ -195,8 +340,15 @@ export function useAdminAddProduct() {
       price: bigint;
       imageUrl: string | null;
     }) => {
-      if (!actor) throw new Error("Not connected");
-      const result = await actor.adminAddProduct(name, price, imageUrl);
+      if (!actor || !adminId || !adminPassword)
+        throw new Error("Not connected");
+      const result = await actor.adminAddProduct(
+        adminId,
+        adminPassword,
+        name,
+        price,
+        imageUrl,
+      );
       if (result.__kind__ === "err") throw new Error(result.err);
       return result.ok as Product;
     },
@@ -209,6 +361,7 @@ export function useAdminAddProduct() {
 
 export function useAdminUpdateProduct() {
   const { actor } = useBackendActor();
+  const { adminId, adminPassword } = useAuth();
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async ({
@@ -222,8 +375,16 @@ export function useAdminUpdateProduct() {
       price: bigint;
       imageUrl: string | null;
     }) => {
-      if (!actor) throw new Error("Not connected");
-      const result = await actor.adminUpdateProduct(id, name, price, imageUrl);
+      if (!actor || !adminId || !adminPassword)
+        throw new Error("Not connected");
+      const result = await actor.adminUpdateProduct(
+        adminId,
+        adminPassword,
+        id,
+        name,
+        price,
+        imageUrl,
+      );
       if (result.__kind__ === "err") throw new Error(result.err);
     },
     onSuccess: () => {
@@ -235,11 +396,13 @@ export function useAdminUpdateProduct() {
 
 export function useAdminDeleteProduct() {
   const { actor } = useBackendActor();
+  const { adminId, adminPassword } = useAuth();
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (id: bigint) => {
-      if (!actor) throw new Error("Not connected");
-      const result = await actor.adminDeleteProduct(id);
+      if (!actor || !adminId || !adminPassword)
+        throw new Error("Not connected");
+      const result = await actor.adminDeleteProduct(adminId, adminPassword, id);
       if (result.__kind__ === "err") throw new Error(result.err);
     },
     onSuccess: () => {
@@ -253,18 +416,20 @@ export function useAdminDeleteProduct() {
 
 export function useMyOrders() {
   const { actor, isFetching } = useBackendActor();
+  const { userId } = useAuth();
   return useQuery<Order[]>({
-    queryKey: ["myOrders"],
+    queryKey: ["myOrders", userId],
     queryFn: async () => {
-      if (!actor) return [];
-      return actor.getMyOrders() as Promise<Order[]>;
+      if (!actor || !userId) return [];
+      return actor.getMyOrders(userId) as Promise<Order[]>;
     },
-    enabled: !!actor && !isFetching,
+    enabled: !!actor && !isFetching && !!userId,
   });
 }
 
 export function usePurchasePlan() {
   const { actor } = useBackendActor();
+  const { userId } = useAuth();
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async ({
@@ -276,8 +441,9 @@ export function usePurchasePlan() {
       deliveryAddress: string;
       utrScreenshotUrl: string | null;
     }) => {
-      if (!actor) throw new Error("Not connected");
+      if (!actor || !userId) throw new Error("Not connected");
       const result = await actor.purchasePlan(
+        userId,
         productId,
         deliveryAddress,
         utrScreenshotUrl,
@@ -294,25 +460,32 @@ export function usePurchasePlan() {
 
 export function useAdminPendingOrders() {
   const { actor, isFetching } = useBackendActor();
+  const { adminId, adminPassword } = useAuth();
   return useQuery<Order[]>({
     queryKey: ["adminPendingOrders"],
     queryFn: async () => {
-      if (!actor) return [];
-      const result = await actor.adminGetPendingOrders();
+      if (!actor || !adminId || !adminPassword) return [];
+      const result = await actor.adminGetPendingOrders(adminId, adminPassword);
       if (result.__kind__ === "ok") return result.ok as Order[];
       return [];
     },
-    enabled: !!actor && !isFetching,
+    enabled: !!actor && !isFetching && !!adminId,
   });
 }
 
 export function useAdminApproveOrder() {
   const { actor } = useBackendActor();
+  const { adminId, adminPassword } = useAuth();
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (orderId: bigint) => {
-      if (!actor) throw new Error("Not connected");
-      const result = await actor.adminApproveOrder(orderId);
+      if (!actor || !adminId || !adminPassword)
+        throw new Error("Not connected");
+      const result = await actor.adminApproveOrder(
+        adminId,
+        adminPassword,
+        orderId,
+      );
       if (result.__kind__ === "err") throw new Error(result.err);
     },
     onSuccess: () => {
@@ -325,6 +498,7 @@ export function useAdminApproveOrder() {
 
 export function useAdminRejectOrder() {
   const { actor } = useBackendActor();
+  const { adminId, adminPassword } = useAuth();
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async ({
@@ -334,8 +508,14 @@ export function useAdminRejectOrder() {
       orderId: bigint;
       reason: string;
     }) => {
-      if (!actor) throw new Error("Not connected");
-      const result = await actor.adminRejectOrder(orderId, reason);
+      if (!actor || !adminId || !adminPassword)
+        throw new Error("Not connected");
+      const result = await actor.adminRejectOrder(
+        adminId,
+        adminPassword,
+        orderId,
+        reason,
+      );
       if (result.__kind__ === "err") throw new Error(result.err);
     },
     onSuccess: () => {
@@ -349,23 +529,25 @@ export function useAdminRejectOrder() {
 
 export function useMyNotifications() {
   const { actor, isFetching } = useBackendActor();
+  const { userId } = useAuth();
   return useQuery<Notification[]>({
-    queryKey: ["myNotifications"],
+    queryKey: ["myNotifications", userId],
     queryFn: async () => {
-      if (!actor) return [];
-      return actor.getMyNotifications() as Promise<Notification[]>;
+      if (!actor || !userId) return [];
+      return actor.getMyNotifications(userId) as Promise<Notification[]>;
     },
-    enabled: !!actor && !isFetching,
+    enabled: !!actor && !isFetching && !!userId,
   });
 }
 
 export function useMarkNotificationRead() {
   const { actor } = useBackendActor();
+  const { userId } = useAuth();
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (id: bigint) => {
-      if (!actor) throw new Error("Not connected");
-      const result = await actor.markNotificationRead(id);
+      if (!actor || !userId) throw new Error("Not connected");
+      const result = await actor.markNotificationRead(userId, id);
       if (result.__kind__ === "err") throw new Error(result.err);
     },
     onSuccess: () => {
@@ -376,6 +558,7 @@ export function useMarkNotificationRead() {
 
 export function useAdminSendNotification() {
   const { actor } = useBackendActor();
+  const { adminId, adminPassword } = useAuth();
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async ({
@@ -385,8 +568,14 @@ export function useAdminSendNotification() {
       recipientId: UserId | null;
       message: string;
     }) => {
-      if (!actor) throw new Error("Not connected");
-      const result = await actor.adminSendNotification(recipientId, message);
+      if (!actor || !adminId || !adminPassword)
+        throw new Error("Not connected");
+      const result = await actor.adminSendNotification(
+        adminId,
+        adminPassword,
+        recipientId,
+        message,
+      );
       if (result.__kind__ === "err") throw new Error(result.err);
     },
     onSuccess: () => {
@@ -397,15 +586,19 @@ export function useAdminSendNotification() {
 
 export function useAdminNotificationHistory() {
   const { actor, isFetching } = useBackendActor();
+  const { adminId, adminPassword } = useAuth();
   return useQuery<Notification[]>({
     queryKey: ["adminNotificationHistory"],
     queryFn: async () => {
-      if (!actor) return [];
-      const result = await actor.adminGetNotificationHistory();
+      if (!actor || !adminId || !adminPassword) return [];
+      const result = await actor.adminGetNotificationHistory(
+        adminId,
+        adminPassword,
+      );
       if (result.__kind__ === "ok") return result.ok as Notification[];
       return [];
     },
-    enabled: !!actor && !isFetching,
+    enabled: !!actor && !isFetching && !!adminId,
   });
 }
 
@@ -413,20 +606,22 @@ export function useAdminNotificationHistory() {
 
 export function useGetMyPaymentDetails() {
   const { actor, isFetching } = useBackendActor();
+  const { userId } = useAuth();
   return useQuery<PaymentDetails | null>({
-    queryKey: ["myPaymentDetails"],
+    queryKey: ["myPaymentDetails", userId],
     queryFn: async () => {
-      if (!actor) return null;
-      const result = await actor.getMyPaymentDetails();
+      if (!actor || !userId) return null;
+      const result = await actor.getMyPaymentDetails(userId);
       if (result.__kind__ === "ok") return result.ok as PaymentDetails;
       return null;
     },
-    enabled: !!actor && !isFetching,
+    enabled: !!actor && !isFetching && !!userId,
   });
 }
 
 export function useSavePaymentDetails() {
   const { actor } = useBackendActor();
+  const { userId } = useAuth();
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async ({
@@ -436,8 +631,8 @@ export function useSavePaymentDetails() {
       bankDetails: BankDetails | null;
       upiId: string | null;
     }) => {
-      if (!actor) throw new Error("Not connected");
-      const result = await actor.savePaymentDetails(bankDetails, upiId);
+      if (!actor || !userId) throw new Error("Not connected");
+      const result = await actor.savePaymentDetails(userId, bankDetails, upiId);
       if (result.__kind__ === "err") throw new Error(result.err);
     },
     onSuccess: () => {
@@ -451,23 +646,25 @@ export function useSavePaymentDetails() {
 
 export function useMyWithdrawals() {
   const { actor, isFetching } = useBackendActor();
+  const { userId } = useAuth();
   return useQuery<WithdrawRequest[]>({
-    queryKey: ["myWithdrawals"],
+    queryKey: ["myWithdrawals", userId],
     queryFn: async () => {
-      if (!actor) return [];
-      return actor.getMyWithdrawals() as Promise<WithdrawRequest[]>;
+      if (!actor || !userId) return [];
+      return actor.getMyWithdrawals(userId) as Promise<WithdrawRequest[]>;
     },
-    enabled: !!actor && !isFetching,
+    enabled: !!actor && !isFetching && !!userId,
   });
 }
 
 export function useRequestWithdrawal() {
   const { actor } = useBackendActor();
+  const { userId } = useAuth();
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (amount: bigint) => {
-      if (!actor) throw new Error("Not connected");
-      const result = await actor.requestWithdrawal(amount);
+      if (!actor || !userId) throw new Error("Not connected");
+      const result = await actor.requestWithdrawal(userId, amount);
       if (result.__kind__ === "err") throw new Error(result.err);
       return result.ok as WithdrawRequest;
     },
@@ -482,71 +679,76 @@ export function useRequestWithdrawal() {
 
 export function useAdminStats() {
   const { actor, isFetching } = useBackendActor();
+  const { adminId, adminPassword } = useAuth();
   return useQuery<AdminStats | null>({
     queryKey: ["adminStats"],
     queryFn: async () => {
-      if (!actor) return null;
-      const result = await actor.adminGetStats();
+      if (!actor || !adminId || !adminPassword) return null;
+      const result = await actor.adminGetStats(adminId, adminPassword);
       if (result.__kind__ === "ok") return result.ok as AdminStats;
       return null;
     },
-    enabled: !!actor && !isFetching,
+    enabled: !!actor && !isFetching && !!adminId,
   });
 }
 
 export function useAdminUsers() {
   const { actor, isFetching } = useBackendActor();
+  const { adminId, adminPassword } = useAuth();
   return useQuery<User[]>({
     queryKey: ["adminUsers"],
     queryFn: async () => {
-      if (!actor) return [];
-      const result = await actor.adminGetAllUsers();
+      if (!actor || !adminId || !adminPassword) return [];
+      const result = await actor.adminGetAllUsers(adminId, adminPassword);
       if (result.__kind__ === "ok") return result.ok as User[];
       return [];
     },
-    enabled: !!actor && !isFetching,
+    enabled: !!actor && !isFetching && !!adminId,
   });
 }
 
 export function useAdminOrders() {
   const { actor, isFetching } = useBackendActor();
+  const { adminId, adminPassword } = useAuth();
   return useQuery<Order[]>({
     queryKey: ["adminOrders"],
     queryFn: async () => {
-      if (!actor) return [];
-      const result = await actor.adminGetAllOrders();
+      if (!actor || !adminId || !adminPassword) return [];
+      const result = await actor.adminGetAllOrders(adminId, adminPassword);
       if (result.__kind__ === "ok") return result.ok as Order[];
       return [];
     },
-    enabled: !!actor && !isFetching,
+    enabled: !!actor && !isFetching && !!adminId,
   });
 }
 
 export function useAdminWithdrawals() {
   const { actor, isFetching } = useBackendActor();
+  const { adminId, adminPassword } = useAuth();
   return useQuery<WithdrawRequest[]>({
     queryKey: ["adminWithdrawals"],
     queryFn: async () => {
-      if (!actor) return [];
-      const result = await actor.adminGetAllWithdrawals();
+      if (!actor || !adminId || !adminPassword) return [];
+      const result = await actor.adminGetAllWithdrawals(adminId, adminPassword);
       if (result.__kind__ === "ok") return result.ok as WithdrawRequest[];
       return [];
     },
-    enabled: !!actor && !isFetching,
+    enabled: !!actor && !isFetching && !!adminId,
   });
 }
 
 export function useAdminAuditLog() {
   const { actor, isFetching } = useBackendActor();
+  const { adminId, adminPassword } = useAuth();
   return useQuery<AuditLog[]>({
     queryKey: ["adminAuditLog"],
     queryFn: async () => {
-      if (!actor) return [];
-      const result = await actor.adminGetAuditLog();
+      if (!actor || !adminId || !adminPassword) return [];
+      const result = await actor.adminGetAuditLog(adminId, adminPassword);
       if (result.__kind__ === "ok") return result.ok as AuditLog[];
       return [];
     },
-    enabled: !!actor && !isFetching,
+    enabled: !!actor && !isFetching && !!adminId,
   });
 }
 
@@ -554,6 +756,7 @@ export function useAdminAuditLog() {
 
 export function useSetUserStatus() {
   const { actor } = useBackendActor();
+  const { adminId, adminPassword } = useAuth();
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async ({
@@ -563,8 +766,14 @@ export function useSetUserStatus() {
       userId: UserId;
       status: UserStatus;
     }) => {
-      if (!actor) throw new Error("Not connected");
-      const result = await actor.setUserStatus(userId, status);
+      if (!actor || !adminId || !adminPassword)
+        throw new Error("Not connected");
+      const result = await actor.setUserStatus(
+        adminId,
+        adminPassword,
+        userId,
+        status,
+      );
       if (result.__kind__ === "err") throw new Error(result.err);
     },
     onSuccess: () => {
@@ -575,6 +784,7 @@ export function useSetUserStatus() {
 
 export function useResetUserPassword() {
   const { actor } = useBackendActor();
+  const { adminId, adminPassword } = useAuth();
   return useMutation({
     mutationFn: async ({
       userId,
@@ -583,8 +793,14 @@ export function useResetUserPassword() {
       userId: UserId;
       newPassword: string;
     }) => {
-      if (!actor) throw new Error("Not connected");
-      const result = await actor.resetUserPassword(userId, newPassword);
+      if (!actor || !adminId || !adminPassword)
+        throw new Error("Not connected");
+      const result = await actor.resetUserPassword(
+        adminId,
+        adminPassword,
+        userId,
+        newPassword,
+      );
       if (result.__kind__ === "err") throw new Error(result.err);
     },
   });
@@ -594,11 +810,17 @@ export function useResetUserPassword() {
 
 export function useApproveWithdrawal() {
   const { actor } = useBackendActor();
+  const { adminId, adminPassword } = useAuth();
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (requestId: bigint) => {
-      if (!actor) throw new Error("Not connected");
-      const result = await actor.adminApproveWithdrawal(requestId);
+      if (!actor || !adminId || !adminPassword)
+        throw new Error("Not connected");
+      const result = await actor.adminApproveWithdrawal(
+        adminId,
+        adminPassword,
+        requestId,
+      );
       if (result.__kind__ === "err") throw new Error(result.err);
     },
     onSuccess: () => {
@@ -610,11 +832,17 @@ export function useApproveWithdrawal() {
 
 export function useRejectWithdrawal() {
   const { actor } = useBackendActor();
+  const { adminId, adminPassword } = useAuth();
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (requestId: bigint) => {
-      if (!actor) throw new Error("Not connected");
-      const result = await actor.adminRejectWithdrawal(requestId);
+      if (!actor || !adminId || !adminPassword)
+        throw new Error("Not connected");
+      const result = await actor.adminRejectWithdrawal(
+        adminId,
+        adminPassword,
+        requestId,
+      );
       if (result.__kind__ === "err") throw new Error(result.err);
     },
     onSuccess: () => {

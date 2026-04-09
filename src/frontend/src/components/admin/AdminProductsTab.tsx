@@ -10,8 +10,16 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Edit2, Package, Plus, Trash2 } from "lucide-react";
-import { useState } from "react";
+import {
+  Edit2,
+  ImageIcon,
+  Package,
+  Plus,
+  Trash2,
+  Upload,
+  X,
+} from "lucide-react";
+import { useRef, useState } from "react";
 import { toast } from "sonner";
 import {
   useAdminAddProduct,
@@ -19,15 +27,24 @@ import {
   useAdminGetProducts,
   useAdminUpdateProduct,
 } from "../../hooks/useBackend";
+import { uploadImageToStorage } from "../../lib/storageUpload";
 import type { Product } from "../../types";
 
 interface ProductFormData {
   name: string;
   price: string;
-  imageUrl: string;
+  imageUrl: string; // persisted/existing URL
+  pendingFile: File | null; // new file selected but not yet uploaded
+  previewUrl: string; // local object URL or existing imageUrl for preview
 }
 
-const EMPTY_FORM: ProductFormData = { name: "", price: "", imageUrl: "" };
+const EMPTY_FORM: ProductFormData = {
+  name: "",
+  price: "",
+  imageUrl: "",
+  pendingFile: null,
+  previewUrl: "",
+};
 
 export default function AdminProductsTab() {
   const { data: products, isLoading } = useAdminGetProducts();
@@ -41,9 +58,12 @@ export default function AdminProductsTab() {
   const [editProduct, setEditProduct] = useState<Product | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<Product | null>(null);
   const [form, setForm] = useState<ProductFormData>(EMPTY_FORM);
+  const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
 
   const openAdd = () => {
     setForm(EMPTY_FORM);
+    setUploadProgress(0);
     setAddOpen(true);
   };
 
@@ -52,20 +72,45 @@ export default function AdminProductsTab() {
       name: p.name,
       price: String(p.price),
       imageUrl: p.imageUrl ?? "",
+      pendingFile: null,
+      previewUrl: p.imageUrl ?? "",
     });
+    setUploadProgress(0);
     setEditProduct(p);
   };
+
+  /** Resolve final imageUrl: upload pending file if any, else use existing URL */
+  async function resolveImageUrl(): Promise<string | null> {
+    if (form.pendingFile) {
+      setUploading(true);
+      setUploadProgress(0);
+      try {
+        const url = await uploadImageToStorage(form.pendingFile, (pct) => {
+          setUploadProgress(pct);
+        });
+        return url;
+      } finally {
+        setUploading(false);
+      }
+    }
+    return form.imageUrl.trim() || null;
+  }
 
   const handleAdd = async () => {
     if (!form.name.trim() || !form.price.trim()) {
       toast.error("Name and price are required");
       return;
     }
+    if (!form.pendingFile && !form.imageUrl) {
+      toast.error("Product image is required");
+      return;
+    }
     try {
+      const imageUrl = await resolveImageUrl();
       await addProduct({
         name: form.name.trim(),
         price: BigInt(Math.round(Number(form.price))),
-        imageUrl: form.imageUrl.trim() || null,
+        imageUrl,
       });
       toast.success("Product added successfully");
       setAddOpen(false);
@@ -79,12 +124,17 @@ export default function AdminProductsTab() {
       toast.error("Name and price are required");
       return;
     }
+    if (!form.pendingFile && !form.imageUrl) {
+      toast.error("Product image is required");
+      return;
+    }
     try {
+      const imageUrl = await resolveImageUrl();
       await updateProduct({
         id: editProduct.id,
         name: form.name.trim(),
         price: BigInt(Math.round(Number(form.price))),
-        imageUrl: form.imageUrl.trim() || null,
+        imageUrl,
       });
       toast.success("Product updated successfully");
       setEditProduct(null);
@@ -107,6 +157,8 @@ export default function AdminProductsTab() {
       );
     }
   };
+
+  const isSubmitting = uploading || adding || updating;
 
   return (
     <div className="space-y-4">
@@ -241,24 +293,33 @@ export default function AdminProductsTab() {
               Add New Product
             </DialogTitle>
           </DialogHeader>
-          <ProductForm form={form} onChange={setForm} />
+          <ProductForm
+            form={form}
+            onChange={setForm}
+            uploadProgress={uploading ? uploadProgress : undefined}
+          />
           <div className="flex gap-2 justify-end pt-2">
             <Button
               variant="outline"
               size="sm"
               onClick={() => setAddOpen(false)}
               className="border-border"
+              disabled={isSubmitting}
             >
               Cancel
             </Button>
             <Button
               size="sm"
               onClick={handleAdd}
-              disabled={adding}
+              disabled={isSubmitting}
               className="bg-primary text-primary-foreground hover:bg-primary/90"
               data-ocid="admin-save-product"
             >
-              {adding ? "Adding…" : "Add Product"}
+              {uploading
+                ? `Uploading… ${uploadProgress}%`
+                : adding
+                  ? "Adding…"
+                  : "Add Product"}
             </Button>
           </div>
         </DialogContent>
@@ -275,24 +336,33 @@ export default function AdminProductsTab() {
               Edit Product
             </DialogTitle>
           </DialogHeader>
-          <ProductForm form={form} onChange={setForm} />
+          <ProductForm
+            form={form}
+            onChange={setForm}
+            uploadProgress={uploading ? uploadProgress : undefined}
+          />
           <div className="flex gap-2 justify-end pt-2">
             <Button
               variant="outline"
               size="sm"
               onClick={() => setEditProduct(null)}
               className="border-border"
+              disabled={isSubmitting}
             >
               Cancel
             </Button>
             <Button
               size="sm"
               onClick={handleUpdate}
-              disabled={updating}
+              disabled={isSubmitting}
               className="bg-primary text-primary-foreground hover:bg-primary/90"
               data-ocid="admin-update-product"
             >
-              {updating ? "Saving…" : "Save Changes"}
+              {uploading
+                ? `Uploading… ${uploadProgress}%`
+                : updating
+                  ? "Saving…"
+                  : "Save Changes"}
             </Button>
           </div>
         </DialogContent>
@@ -342,10 +412,42 @@ export default function AdminProductsTab() {
 function ProductForm({
   form,
   onChange,
+  uploadProgress,
 }: {
-  form: { name: string; price: string; imageUrl: string };
-  onChange: (f: { name: string; price: string; imageUrl: string }) => void;
+  form: ProductFormData;
+  onChange: (f: ProductFormData) => void;
+  uploadProgress?: number;
 }) {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0] ?? null;
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      toast.error("Only image files are allowed (JPG, PNG, WebP)");
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      return;
+    }
+    // Revoke previous local object URL to avoid memory leaks
+    if (form.previewUrl && form.pendingFile) {
+      URL.revokeObjectURL(form.previewUrl);
+    }
+    // Use a local blob URL only for preview — the actual Firebase download URL
+    // is obtained via uploadBytes() when the form is submitted.
+    const localUrl = URL.createObjectURL(file);
+    onChange({ ...form, pendingFile: file, previewUrl: localUrl });
+  };
+
+  const handleClearImage = () => {
+    if (form.previewUrl && form.pendingFile) {
+      URL.revokeObjectURL(form.previewUrl);
+    }
+    if (fileInputRef.current) fileInputRef.current.value = "";
+    onChange({ ...form, pendingFile: null, previewUrl: "", imageUrl: "" });
+  };
+
+  const hasPreview = !!form.previewUrl;
+
   return (
     <div className="space-y-4 py-2">
       <div className="space-y-1.5">
@@ -370,30 +472,92 @@ function ProductForm({
           data-ocid="admin-product-price"
         />
       </div>
+
+      {/* Image Upload */}
       <div className="space-y-1.5">
         <Label className="text-xs text-muted-foreground">
-          Image URL (optional)
+          Product Image <span className="text-destructive">*</span>
         </Label>
-        <Input
-          value={form.imageUrl}
-          onChange={(e) => onChange({ ...form, imageUrl: e.target.value })}
-          placeholder="https://example.com/image.jpg"
-          className="bg-background border-input"
-          data-ocid="admin-product-image"
+
+        {/* Preview */}
+        {hasPreview && (
+          <div className="relative w-full rounded-lg overflow-hidden border border-border bg-muted">
+            <img
+              src={form.previewUrl}
+              alt="Preview"
+              className="w-full h-40 object-cover"
+              onError={(e) => {
+                (e.currentTarget as HTMLImageElement).style.display = "none";
+              }}
+            />
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="absolute top-2 right-2 h-7 w-7 p-0 bg-card/80 hover:bg-card text-muted-foreground hover:text-destructive rounded-full"
+              onClick={handleClearImage}
+              aria-label="Remove image"
+            >
+              <X className="h-3.5 w-3.5" />
+            </Button>
+            {uploadProgress !== undefined && (
+              <div className="absolute bottom-0 left-0 right-0 h-1 bg-muted">
+                <div
+                  className="h-full bg-primary transition-all duration-300"
+                  style={{ width: `${uploadProgress}%` }}
+                />
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* File input trigger */}
+        {!hasPreview && (
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="w-full h-32 rounded-lg border-2 border-dashed border-border bg-background hover:border-primary/50 hover:bg-muted/30 transition-colors flex flex-col items-center justify-center gap-2 cursor-pointer"
+            data-ocid="admin-product-image"
+          >
+            <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center">
+              <ImageIcon className="h-5 w-5 text-muted-foreground" />
+            </div>
+            <div className="text-center">
+              <p className="text-xs font-medium text-foreground flex items-center gap-1 justify-center">
+                <Upload className="h-3 w-3" />
+                Upload Image
+              </p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                JPG, PNG, WebP up to 5MB
+              </p>
+            </div>
+          </button>
+        )}
+
+        {/* Hidden actual file input */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={handleFileChange}
+          data-ocid="admin-product-file-input"
         />
+
+        {/* Replace button when image is selected */}
+        {hasPreview && (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="w-full gap-1.5 border-border text-muted-foreground"
+            onClick={() => fileInputRef.current?.click()}
+          >
+            <Upload className="h-3.5 w-3.5" />
+            Replace Image
+          </Button>
+        )}
       </div>
-      {form.imageUrl && (
-        <div className="mt-2 rounded-lg overflow-hidden border border-border w-24 h-24">
-          <img
-            src={form.imageUrl}
-            alt="Preview"
-            className="w-full h-full object-cover"
-            onError={(e) => {
-              (e.currentTarget as HTMLImageElement).style.display = "none";
-            }}
-          />
-        </div>
-      )}
     </div>
   );
 }

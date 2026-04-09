@@ -1,4 +1,4 @@
-// Version: 3.0.0
+// Version: 1.0.0
 type AuditLog__476823628 =
   {
     action : Text;
@@ -20,26 +20,21 @@ type CommissionRecord__528465784 =
     timestamp : Timestamp__813860109
   };
 type CommissionType__822206366 = {#direct; #level; #pair};
+type Data__159895909<T> = {var count : Nat__490723111; elements : [var ?T]};
 type Data__791452850<K, V> =
   {var count : Nat__490723111; kvs : [var ?(K, V)]};
+type Internal__667636161<T> =
+  {children : [var ?Node__92254746<T>]; data : Data__159895909<T>};
 type Internal__8484328<K, V> =
   {children : [var ?Node__46230540<K, V>]; data : Data__791452850<K, V>};
+type Leaf__520550824<T> = {data : Data__159895909<T>};
 type Leaf__809889148<K, V> = {data : Data__791452850<K, V>};
-type List__415060402<T> = List__790383201<T>;
-type List__790383201<T> =
-  {
-    var blockIndex : Nat__490723111;
-    var blocks : [var [var ?T]];
-    var elementIndex : Nat__490723111
-  };
-type Map__158565046<K, V> = Map__297112838<K, V>;
-type Map__297112838<K, V> =
-  {var root : Node__46230540<K, V>; var size : Nat__490723111};
-type Map__605269027<K, V> = Map__158565046<K, V>;
 type Nat__490723111 = Nat__920180692;
 type Nat__920180692 = Nat;
 type Node__46230540<K, V> =
   {#internal : Internal__8484328<K, V>; #leaf : Leaf__809889148<K, V>};
+type Node__92254746<T> =
+  {#internal : Internal__667636161<T>; #leaf : Leaf__520550824<T>};
 type Notification__264708741 =
   {
     id : Nat;
@@ -48,59 +43,6 @@ type Notification__264708741 =
     recipientId : ?UserId__990689167;
     timestamp : Timestamp__515776233
   };
-type OldAdminWallet__947401790 =
-  {
-    var netProfit : Nat;
-    var totalCommissionsPaid : Nat;
-    var totalReceived : Nat
-  };
-type OldCommissionRecord__978761102 =
-  {
-    amount : Nat;
-    commType : OldCommissionType__1063523887;
-    id : Nat;
-    level : Nat;
-    orderId : Nat;
-    recipient : OldUserId__580276348;
-    timestamp : OldTimestamp__27916213
-  };
-type OldCommissionType__1063523887 = {#direct; #level; #pair};
-type OldOrder__235915581 =
-  {
-    buyer : OldUserId__580276348;
-    id : Nat;
-    planId : Nat;
-    planPrice : Nat;
-    timestamp : OldTimestamp__27916213
-  };
-type OldTimestamp__27916213 = Int;
-type OldUserId__580276348 = Principal;
-type OldUser__655922588 =
-  {
-    createdAt : OldTimestamp__27916213;
-    var directIncome : Nat;
-    id : OldUserId__580276348;
-    var isAdmin : Bool;
-    var leftChild : ?OldUserId__580276348;
-    var levelIncome : Nat;
-    var name : Text;
-    var pairIncome : Nat;
-    referralCode : Text;
-    var rightChild : ?OldUserId__580276348;
-    var sponsorId : ?OldUserId__580276348;
-    var totalIncome : Nat;
-    var walletBalance : Nat
-  };
-type OldWithdrawRequest__188149548 =
-  {
-    amount : Nat;
-    id : Nat;
-    var processedAt : ?OldTimestamp__27916213;
-    requestedAt : OldTimestamp__27916213;
-    var status : OldWithdrawStatus__249781046;
-    user : OldUserId__580276348
-  };
-type OldWithdrawStatus__249781046 = {#approved; #pending; #rejected};
 type OrderStatus__272730104 = {#approved; #pendingApproval; #rejected};
 type Order__141779993 =
   {
@@ -122,6 +64,9 @@ type Product__1019278076 =
     var name : Text;
     var price : Nat
   };
+type Set__532252804<T> = Set__710576254<T>;
+type Set__710576254<T> =
+  {var root : Node__92254746<T>; var size : Nat__490723111};
 type Timestamp__301639476 = Int;
 type Timestamp__501766206 = Timestamp__301639476;
 type Timestamp__515776233 = Timestamp__301639476;
@@ -129,7 +74,7 @@ type Timestamp__778030842 = Timestamp__301639476;
 type Timestamp__813860109 = Timestamp__301639476;
 type Timestamp__868508278 = Timestamp__301639476;
 type UserId__1043627770 = UserId__158757552;
-type UserId__158757552 = Principal;
+type UserId__158757552 = Text;
 type UserId__288862659 = UserId__158757552;
 type UserId__360583728 = UserId__158757552;
 type UserId__41638867 = UserId__158757552;
@@ -147,7 +92,9 @@ type User__98118558 =
     var mobileNumber : Text;
     var name : Text;
     var pairIncome : Nat;
+    var pairPaid : Set__532252804<Text>;
     var passwordHash : Text;
+    var position : Text;
     referralCode : Text;
     var rightChild : ?UserId__1043627770;
     var sponsorId : ?UserId__1043627770;
@@ -166,49 +113,11 @@ type WithdrawRequest__504572430 =
     user : UserId__360583728
   };
 type WithdrawStatus__114184107 = {#approved; #pending; #rejected};
-actor ({
+actor {
   stable ADMIN_ID : Text;
   stable ADMIN_PASSWORD : Text;
-  in adminWallet : OldAdminWallet__947401790;
-  stable auditLog :
-    {
-      var blockIndex : Nat__490723111;
-      var blocks : [var [var ?AuditLog__476823628]];
-      var elementIndex : Nat__490723111
-    };
-  in commissions : List__415060402<OldCommissionRecord__978761102>;
-  stable mobileIndex :
-    {
-      var root : Node__46230540<Text, UserId__1043627770>;
-      var size : Nat__490723111
-    };
-  stable nextAuditId : Nat;
-  in var nextCommissionId : Nat;
-  stable nextNotificationId : Nat;
-  in var nextOrderId : Nat;
-  stable var nextProductId : Nat;
-  in var nextWithdrawalId : Nat;
-  stable notifications :
-    {
-      var blockIndex : Nat__490723111;
-      var blocks : [var [var ?Notification__264708741]];
-      var elementIndex : Nat__490723111
-    };
-  in orders : List__415060402<OldOrder__235915581>;
-  in plans : [(Nat, Nat)];
-  stable products :
-    {
-      var blockIndex : Nat__490723111;
-      var blocks : [var [var ?Product__1019278076]];
-      var elementIndex : Nat__490723111
-    };
-  in purchasedSet : List__415060402<OldUserId__580276348>;
-  in referralIndex : Map__605269027<Text, OldUserId__580276348>;
-  in users : Map__605269027<OldUserId__580276348, OldUser__655922588>;
-  in withdrawals : List__415060402<OldWithdrawRequest__188149548>
-}, {
-  stable ADMIN_ID : Text;
-  stable ADMIN_PASSWORD : Text;
+  stable ORDERS_ADMIN_ID : Text;
+  stable ORDERS_ADMIN_PASSWORD : Text;
   stable adminWallet :
     {
       var netProfit : Nat;
@@ -278,4 +187,4 @@ actor ({
       var blocks : [var [var ?WithdrawRequest__504572430]];
       var elementIndex : Nat__490723111
     }
-}) ;
+};

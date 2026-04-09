@@ -25,9 +25,9 @@ export default function AdminLoginPage() {
     }
     try {
       await adminLogin({ adminId: adminId.trim(), password });
-      loginAdmin();
+      loginAdmin(adminId.trim(), password);
       toast.success("Admin login successful — welcome back.");
-      navigate({ to: "/admin" });
+      navigate({ to: "/admin-dashboard" });
     } catch (err) {
       toast.error(
         err instanceof Error ? err.message : "Invalid admin credentials",

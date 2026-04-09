@@ -151,7 +151,7 @@ export default function AdminDashboardTab() {
                       </p>
                       {log.targetUserId && (
                         <p className="text-[10px] text-muted-foreground/70 font-mono mt-0.5 truncate">
-                          Target: {log.targetUserId.toText().slice(0, 24)}…
+                          Target: {log.targetUserId.slice(0, 24)}…
                         </p>
                       )}
                     </div>

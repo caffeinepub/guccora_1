@@ -10,18 +10,26 @@ import {
 
 const STORAGE_KEY = "guccora_auth";
 
+type Role = "user" | "admin" | null;
+
 interface StoredAuth {
   userId: string | null;
   isAdmin: boolean;
+  adminId: string | null;
+  adminPassword: string | null;
+  role: Role;
 }
 
 interface AuthContextValue {
   userId: string | null;
   isAdmin: boolean;
+  adminId: string | null;
+  adminPassword: string | null;
+  role: Role;
   isAuthenticated: boolean;
   isInitializing: boolean;
-  login: (userId: string) => void;
-  loginAdmin: () => void;
+  login: (userId: string, role?: Role) => void;
+  loginAdmin: (adminId: string, password: string) => void;
   logout: () => void;
 }
 
@@ -30,11 +38,30 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 function readStorage(): StoredAuth {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return { userId: null, isAdmin: false };
+    if (!raw)
+      return {
+        userId: null,
+        isAdmin: false,
+        adminId: null,
+        adminPassword: null,
+        role: null,
+      };
     const parsed = JSON.parse(raw) as StoredAuth;
+    // Backward compat: older stored data may not have role field
+    if (!parsed.role) {
+      if (parsed.isAdmin) parsed.role = "admin";
+      else if (parsed.userId) parsed.role = "user";
+      else parsed.role = null;
+    }
     return parsed;
   } catch {
-    return { userId: null, isAdmin: false };
+    return {
+      userId: null,
+      isAdmin: false,
+      adminId: null,
+      adminPassword: null,
+      role: null,
+    };
   }
 }
 
@@ -46,6 +73,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<StoredAuth>({
     userId: null,
     isAdmin: false,
+    adminId: null,
+    adminPassword: null,
+    role: null,
   });
   const [isInitializing, setIsInitializing] = useState(true);
 
@@ -55,27 +85,49 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setIsInitializing(false);
   }, []);
 
-  const login = useCallback((userId: string) => {
-    const next: StoredAuth = { userId, isAdmin: false };
+  const login = useCallback((userId: string, role: Role = "user") => {
+    const next: StoredAuth = {
+      userId,
+      isAdmin: false,
+      adminId: null,
+      adminPassword: null,
+      role: role ?? "user",
+    };
     writeStorage(next);
     setState(next);
   }, []);
 
-  const loginAdmin = useCallback(() => {
-    const next: StoredAuth = { userId: null, isAdmin: true };
+  const loginAdmin = useCallback((adminId: string, password: string) => {
+    const next: StoredAuth = {
+      userId: null,
+      isAdmin: true,
+      adminId,
+      adminPassword: password,
+      role: "admin",
+    };
     writeStorage(next);
     setState(next);
   }, []);
 
   const logout = useCallback(() => {
     localStorage.removeItem(STORAGE_KEY);
-    setState({ userId: null, isAdmin: false });
+    setState({
+      userId: null,
+      isAdmin: false,
+      adminId: null,
+      adminPassword: null,
+      role: null,
+    });
   }, []);
 
   const value: AuthContextValue = {
     userId: state.userId,
-    isAdmin: state.isAdmin,
-    isAuthenticated: !!state.userId && !state.isAdmin,
+    isAdmin: state.role === "admin",
+    adminId: state.adminId,
+    adminPassword: state.adminPassword,
+    role: state.role,
+    // isAuthenticated = any logged-in session (user or admin)
+    isAuthenticated: !!state.userId && state.role === "user",
     isInitializing,
     login,
     loginAdmin,

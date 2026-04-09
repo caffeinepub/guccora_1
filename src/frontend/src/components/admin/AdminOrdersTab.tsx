@@ -88,7 +88,7 @@ function OrderCard({
 
       {/* Buyer */}
       <div className="text-xs text-muted-foreground font-mono truncate">
-        Buyer: {order.buyer.toText().slice(0, 28)}…
+        Buyer: {order.buyer.slice(0, 28)}…
       </div>
 
       {/* Delivery address */}

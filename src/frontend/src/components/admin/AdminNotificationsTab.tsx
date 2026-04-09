@@ -163,7 +163,7 @@ export default function AdminNotificationsTab() {
                       {filteredUsers.slice(0, 8).map((u) => (
                         <button
                           type="button"
-                          key={u.id.toText()}
+                          key={u.id}
                           className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-muted/30 transition-colors text-left"
                           onClick={() => {
                             setSelectedUser({
@@ -173,7 +173,7 @@ export default function AdminNotificationsTab() {
                             });
                             setSearchUser("");
                           }}
-                          data-ocid={`admin-select-user-${u.id.toText().slice(0, 8)}`}
+                          data-ocid={`admin-select-user-${u.id.slice(0, 8)}`}
                         >
                           <div className="w-7 h-7 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center flex-shrink-0">
                             <span className="text-primary font-bold text-xs">
@@ -286,7 +286,7 @@ export default function AdminNotificationsTab() {
                       </p>
                       {notif.recipientId && (
                         <p className="text-[10px] text-muted-foreground/70 font-mono mt-0.5 truncate">
-                          To: {notif.recipientId.toText().slice(0, 24)}…
+                          To: {notif.recipientId.slice(0, 24)}…
                         </p>
                       )}
                     </div>

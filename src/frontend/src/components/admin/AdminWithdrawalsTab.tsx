@@ -115,7 +115,7 @@ export default function AdminWithdrawalsTab() {
         </div>
 
         <p className="text-xs text-muted-foreground font-mono truncate">
-          User: {req.user.toText().slice(0, 28)}…
+          User: {req.user.slice(0, 28)}…
         </p>
 
         <p className="text-xs text-muted-foreground">

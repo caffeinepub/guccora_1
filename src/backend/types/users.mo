@@ -1,4 +1,5 @@
 import Common "common";
+import Set "mo:core/Set";
 
 module {
   public type UserId = Common.UserId;
@@ -19,6 +20,7 @@ module {
     var mobileNumber : Text;
     var passwordHash : Text;
     var sponsorId : ?UserId;
+    var position : Text;
     var leftChild : ?UserId;
     var rightChild : ?UserId;
     var walletBalance : Nat;
@@ -31,6 +33,9 @@ module {
     var status : UserStatus;
     var bankDetails : ?BankDetails;
     var upiId : ?Text;
+    // Tracks which left+right pairing keys have already been awarded pair income.
+    // Key format: "<leftChildId>:<rightChildId>" — prevents duplicate pair payouts across orders.
+    var pairPaid : Set.Set<Text>;
   };
 
   // Shared (immutable) version of User for public API
@@ -40,6 +45,7 @@ module {
     referralCode : Text;
     mobileNumber : Text;
     sponsorId : ?UserId;
+    position : Text;
     leftChild : ?UserId;
     rightChild : ?UserId;
     walletBalance : Nat;

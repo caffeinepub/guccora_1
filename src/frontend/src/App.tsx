@@ -20,6 +20,7 @@ const DashboardPage = lazy(() => import("./pages/DashboardPage"));
 const WithdrawPage = lazy(() => import("./pages/WithdrawPage"));
 const AdminLoginPage = lazy(() => import("./pages/AdminLoginPage"));
 const AdminPage = lazy(() => import("./pages/AdminPage"));
+const ProfilePage = lazy(() => import("./pages/ProfilePage"));
 
 function PageLoader() {
   return (
@@ -56,9 +57,9 @@ function IndexRedirect() {
   useEffect(() => {
     if (isInitializing) return;
     if (isAdmin) {
-      navigate({ to: "/admin" });
+      navigate({ to: "/admin-dashboard" });
     } else if (isAuthenticated) {
-      navigate({ to: "/dashboard" });
+      navigate({ to: "/user-dashboard" });
     }
     // else stay on home
   }, [isAuthenticated, isAdmin, isInitializing, navigate]);
@@ -74,9 +75,9 @@ function LoginRedirect() {
   useEffect(() => {
     if (isInitializing) return;
     if (isAdmin) {
-      navigate({ to: "/admin" });
+      navigate({ to: "/admin-dashboard" });
     } else if (isAuthenticated) {
-      navigate({ to: "/dashboard" });
+      navigate({ to: "/user-dashboard" });
     }
   }, [isAuthenticated, isAdmin, isInitializing, navigate]);
 
@@ -101,6 +102,7 @@ function ProtectedRoute({
   return <Component />;
 }
 
+// Admin route guard — non-admins redirect to home
 function AdminRoute() {
   const { isAdmin, isInitializing } = useAuth();
   const navigate = useNavigate();
@@ -108,7 +110,7 @@ function AdminRoute() {
   useEffect(() => {
     if (isInitializing) return;
     if (!isAdmin) {
-      navigate({ to: "/admin-login" });
+      navigate({ to: "/" });
     }
   }, [isAdmin, isInitializing, navigate]);
 
@@ -122,12 +124,14 @@ function AdminLoginRedirect() {
 
   useEffect(() => {
     if (isInitializing) return;
-    if (isAdmin) navigate({ to: "/admin" });
+    if (isAdmin) navigate({ to: "/admin-dashboard" });
   }, [isAdmin, isInitializing, navigate]);
 
   if (isInitializing) return <PageLoader />;
   return <AdminLoginPage />;
 }
+
+// ─── Route definitions ────────────────────────────────────────────────────────
 
 const indexRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -147,9 +151,17 @@ const productsRoute = createRoute({
   component: () => <ProtectedRoute component={ProductsPage} />,
 });
 
+// Legacy /dashboard alias — keeps backward compat
 const dashboardRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/dashboard",
+  component: () => <ProtectedRoute component={DashboardPage} />,
+});
+
+// Primary user dashboard route
+const userDashboardRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/user-dashboard",
   component: () => <ProtectedRoute component={DashboardPage} />,
 });
 
@@ -159,15 +171,42 @@ const withdrawRoute = createRoute({
   component: () => <ProtectedRoute component={WithdrawPage} />,
 });
 
+const profileRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/profile",
+  component: () => <ProtectedRoute component={ProfilePage} />,
+});
+
 const adminLoginRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/admin-login",
   component: AdminLoginRedirect,
 });
 
+// Legacy /admin alias — keeps backward compat
 const adminRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/admin",
+  component: AdminRoute,
+});
+
+// Primary admin dashboard route
+const adminDashboardRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/admin-dashboard",
+  component: AdminRoute,
+});
+
+// Admin sub-routes — all render AdminPage (tabs handled inside the component)
+const adminUsersRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/admin-users",
+  component: AdminRoute,
+});
+
+const adminProductsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/admin-products",
   component: AdminRoute,
 });
 
@@ -176,9 +215,14 @@ const routeTree = rootRoute.addChildren([
   loginRoute,
   productsRoute,
   dashboardRoute,
+  userDashboardRoute,
   withdrawRoute,
+  profileRoute,
   adminLoginRoute,
   adminRoute,
+  adminDashboardRoute,
+  adminUsersRoute,
+  adminProductsRoute,
 ]);
 
 const router = createRouter({ routeTree });

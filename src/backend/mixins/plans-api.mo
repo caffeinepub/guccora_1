@@ -8,6 +8,10 @@ mixin (
   products : List.List<PlanTypes.Product>,
   nextProductId : Nat,
 ) {
+  func isPlansAdmin(adminId : Text, password : Text) : Bool {
+    adminId == "6305462887" and password == "guccora@8433";
+  };
+
   /// Return all active products (public)
   public query func getProducts() : async [PlanTypes.ProductPublic] {
     products
@@ -29,12 +33,8 @@ mixin (
   };
 
   /// Admin: return ALL products including inactive
-  public shared query ({ caller }) func adminGetProducts() : async { #ok : [PlanTypes.ProductPublic]; #err : Text } {
-    let isAdmin = switch (users.get(caller)) {
-      case (?u) u.isAdmin;
-      case null false;
-    };
-    if (not isAdmin) return #err("Unauthorized");
+  public shared func adminGetProducts(adminId : Text, password : Text) : async { #ok : [PlanTypes.ProductPublic]; #err : Text } {
+    if (not isPlansAdmin(adminId, password)) return #err("Unauthorized");
     let result = products
       .map<PlanTypes.Product, PlanTypes.ProductPublic>(func(p : PlanTypes.Product) : PlanTypes.ProductPublic {
         { id = p.id; name = p.name; price = p.price; imageUrl = p.imageUrl; isActive = p.isActive };
@@ -44,16 +44,14 @@ mixin (
   };
 
   /// Admin: add a new product
-  public shared ({ caller }) func adminAddProduct(
+  public shared func adminAddProduct(
+    adminId : Text,
+    password : Text,
     name : Text,
     price : Nat,
     imageUrl : ?Text,
   ) : async { #ok : PlanTypes.ProductPublic; #err : Text } {
-    let isAdmin = switch (users.get(caller)) {
-      case (?u) u.isAdmin;
-      case null false;
-    };
-    if (not isAdmin) return #err("Unauthorized");
+    if (not isPlansAdmin(adminId, password)) return #err("Unauthorized");
     if (name.size() == 0) return #err("Product name is required");
     if (price == 0) return #err("Price must be greater than 0");
 
@@ -70,17 +68,15 @@ mixin (
   };
 
   /// Admin: update an existing product
-  public shared ({ caller }) func adminUpdateProduct(
+  public shared func adminUpdateProduct(
+    adminId : Text,
+    password : Text,
     id : Nat,
     name : Text,
     price : Nat,
     imageUrl : ?Text,
   ) : async { #ok : (); #err : Text } {
-    let isAdmin = switch (users.get(caller)) {
-      case (?u) u.isAdmin;
-      case null false;
-    };
-    if (not isAdmin) return #err("Unauthorized");
+    if (not isPlansAdmin(adminId, password)) return #err("Unauthorized");
     let productOpt = products.find(func(p : PlanTypes.Product) : Bool { p.id == id });
     switch (productOpt) {
       case null { #err("Product not found") };
@@ -94,12 +90,8 @@ mixin (
   };
 
   /// Admin: soft-delete a product (set isActive = false)
-  public shared ({ caller }) func adminDeleteProduct(id : Nat) : async { #ok : (); #err : Text } {
-    let isAdmin = switch (users.get(caller)) {
-      case (?u) u.isAdmin;
-      case null false;
-    };
-    if (not isAdmin) return #err("Unauthorized");
+  public shared func adminDeleteProduct(adminId : Text, password : Text, id : Nat) : async { #ok : (); #err : Text } {
+    if (not isPlansAdmin(adminId, password)) return #err("Unauthorized");
     let productOpt = products.find(func(p : PlanTypes.Product) : Bool { p.id == id });
     switch (productOpt) {
       case null { #err("Product not found") };
